@@ -1,6 +1,6 @@
 # https://learn.microsoft.com/en-us/shows/visual-studio-code/cpp-in-vs-code-building-your-code-with-cmake
 
-message(STATUS ">>> Start")
+message(STATUS ">>> Start preparing environment")
 
 # Enable function cmake_print_variables (but printed only on save to CMakeLists.txt !)
 include(CMakePrintHelpers)
@@ -17,13 +17,14 @@ include(CTest)
 enable_testing()
 
 # stuff that should happen not on Linux 
-message(STATUS ">>> Windows Microsoft Visual C/C++")
+message(STATUS ">>> Prepare for Microsoft Visual C/C++")
 
 # set variables for Windows Microsoft Visual C/C++ environment
-# external pgm getopt.c has to be added as no intrinsic in MSVC
+# MSVC creates .exe in subfolder debug
 set(MyExeOutpath "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}")
 set(MyExeSuffix  ".exe")
-cmake_print_variables(MyExeOutpath MyExeSuffix)
+set(MySubmodules "$<TARGET_OBJECTS:getopt>")
+cmake_print_variables(MyExeOutpath MyExeSuffix MySubmodules)
 
 # MSVC-only: compile submodule getopts.c to .obj if changed
 add_library(getopt OBJECT getopt.c)
@@ -31,13 +32,13 @@ target_compile_definitions(getopt PUBLIC GETOPT)
 
 # compile main program if main program or submodule word.c (Linux) or words.c/getopts.c (MSVC) have been changed
 # important: although my source name contains a date, the name of the resulting .exe (=target) is without this date
-message(STATUS ">>> Generating executable")
+message(STATUS ">>> Define executable generation")
 add_executable(SaitekTrimwheel SaitekTrimwheel.cpp)
-target_link_libraries(SaitekTrimwheel ${MySubmodules})
+target_link_libraries(SaitekTrimwheel ${MySubmodules} ${CMAKE_SOURCE_DIR}/GameInput.lib)
 set_property(TARGET SaitekTrimwheel PROPERTY CXX_STANDARD 17)
 
 # copy executable to source folder
-message(STATUS ">>> Copy executable to source folder")
+message(STATUS ">>> Define copy of executable to source folder")
 add_custom_command(	TARGET SaitekTrimwheel POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${MyExeOutpath}/SaitekTrimwheel${MyExeSuffix}
@@ -47,6 +48,6 @@ add_custom_command(TARGET SaitekTrimwheel POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan
 		"${MyExeOutpath}/SaitekTrimwheel${MyExeSuffix} copied to ${CMAKE_SOURCE_DIR}")
 
-message(STATUS ">>> CMake finished")
+message(STATUS ">>> CMake preparing finished")
 # end
 						

@@ -1,679 +1,286 @@
-//-----------------------------------------------------------------------------
-// File: Joystick.cpp
+// 
+// 13.05.25/AH derived from https://github.com/MysteriousJ/Joystick-Input-Examples
+//		copy of content of "gameinput.cpp"
 //
-// Desc: Demonstrates an application which receives immediate 
-//       joystick data in exclusive mode via a dialog timer.
-//
-// Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License (MIT).
-//-----------------------------------------------------------------------------
-#define STRICT
-#define DIRECTINPUT_VERSION 0x0800
 
-#ifndef _WIN32_DCOM
-#define _WIN32_DCOM
+// Trick to see where SUCCEEDED is defined, leads to error msg
+// 		C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared\winerror.h(29881,9):
+//		warning C4005: "SUCCEEDED": Makro-Neudefinition
+//		[C:\Users\Achmed\Git_Repos_AH1\SaitekTrimwheel\out\build\Win10_MSVC-17-2022-x64\SaitekTrimwheel.vcxproj]
+// now I know, definition of SUCCEEDED results from definition in winerror.h
+// Only activated once to find the location of SUCCEEDED definition.
+// ##define SUCCEEDED 3.1415927
+
+// Include MS GameInput API V.0,
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-overview
+// and https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-nuget
+// API: https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/gameinput_members
+#include "GameInput.h"
+
+// For other nice things ;-)
+#include <stdio.h>
+
+// Number of controllers and pointer to pointer array (name changed from "Joysticks" to "Joystruct" for better reading)
+struct Joystruct
+{
+	uint32_t deviceCount;
+// Create pointer to pointer array, the array pointers point to object instances of class IGameInputDevice
+	IGameInputDevice** devices;
+};
+
+// Structure"GameInputDeviceInfo" (GameInput.h) minimum size (first fields we process) for device attribute structure 
+const int GmInDevInfoHdr = sizeof(GameInputDeviceInfo().infoSize) + 
+	sizeof(GameInputDeviceInfo().vendorId) + sizeof(GameInputDeviceInfo().productId) + 
+	sizeof(GameInputDeviceInfo().revisionNumber) + sizeof(GameInputDeviceInfo().interfaceNumber) +
+	sizeof(GameInputDeviceInfo().collectionNumber);
+
+// Constants for while-loop to restrict to max. one day dependent on cycle-sleep
+// Let the program run, but not endless ! 500 msec sleep time -> one day has 86400 seconds
+	const int waitmsec = 500 ;
+	const int waitloops = 86400 * 1000 / waitmsec ;
+
+// Variables for processing GameInputDeviceInfo structure
+int memsize, vid, pid, rev, ifc, col = 0;
+
+// Variables for processing axes, switches, buttons
+int nbraxes, nbrswch, nbrbutt = 0;
+
+// #############################################################################################################
+// Start of asynchronous subroutine
+// #############################################################################################################
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/functions/gameinputdevicecallback
+// From GameInput, at first at registration, then after an event happened, we get this information:
+// - Callback-Token (given when this routine was registered by RegisterDeviceCallback)
+// - context = &joysticks (important informations that we have specified in RegisterDeviceCallback as parameter 5)
+// - IGameInputDevice* (pointer to a specific controller that has changed its state)
+// - Current state (connection and input status) of this controller
+// - Previous state (connection and input status) of this controller
+// For status enumeration see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/enums/gameinputdevicestatus
+// This routine isn't really called async as it is registered as "GameInputBlockingEnumeration", 
+// therefore it runs
+void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* context, IGameInputDevice* device, uint64_t timestamp, GameInputDeviceStatus currentStatus, GameInputDeviceStatus previousStatus) 
+{ 
+	printf("## callback: routine starting (async)\n");
+// Access our current "joysticks" array (of controllers)
+	Joystruct* joysticks = (Joystruct*)context;
+// currentStatus :
+//		GameInputDeviceNoStatus = 0x00000000
+//		GameInputDeviceConnected = 0x00000001
+//		then other status = 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x100000
+//		and GameInputDeviceAnyStatus = 0x00FFFFFF
+// GameInputDeviceConnected : 0x00000001
+// so the "if" (0 = false, any other value = true), after the boolean "and" executes its tree when flag "device is connected" is set
+// meaning: the "if" executes its tree as a (new) device connects
+	if (currentStatus & GameInputDeviceConnected)
+	{
+		for (uint32_t i = 0; i < joysticks->deviceCount; ++i)
+		{
+// Check if the new contoller device is already in our list of controllers, if so, do nothing and return to caller
+			printf("## callback: checking device %i", i);
+			if (joysticks->devices[i] == device) {
+				printf("## callback: routine leaving, joystick unchanged");
+				return;
+			}
+		}
+// We have found a new device, so re-allocate our joystick list with the additional joystick definition
+
+// add 1 to number of controllers
+		++joysticks->deviceCount;
+		printf("## callback: Joystick %i added\n",joysticks->deviceCount);
+// now realloc (resize) our list of controllers (add memory for the new controller)
+		joysticks->devices = (IGameInputDevice**)realloc(joysticks->devices, joysticks->deviceCount * sizeof(IGameInputDevice*));
+// move new device definition to new element of controller array
+// Array handling: controller 1 to element 0, controller 2 to element 1 aso., therefore deviceCount-1)
+		joysticks->devices[joysticks->deviceCount-1] = device;
+	}
+	printf("## callback: routine leaving\n");
+} 
+
+// #############################################################################################################
+// Start of main program entry
+// #############################################################################################################
+// Modified main entry to accept parameters for (later to implement) getopt processing
+int main(int argc, char** argv)
+{
+// My own header for comparing build vs. execution msg to see if build/compile in VSCode really happened
+// Building with Microsoft Visual-C
+#if _MSC_VER          // see https://learn.microsoft.com/en-us/cpp/overview/compiler-versions?view=msvc-170
+#define COMP_TYP "MSVC"
+#define COMP_VER _MSC_FULL_VER
+// Building with gcc
+#elif __GNUC__		// see https://gcc.gnu.org/onlinedocs/cpp/Common-Predefined-Macros.html
+#define COMP_TYP "gcc"
+#define COMP_VER (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
+// Building with whatever
+#else
+#define COMP_TYP "???"
+#define COMP_VER 0
 #endif
 
-#include <Windows.h>
+// Just to get information about the compile time at compilation (#pragma message) and execution (printf)
+#pragma message ("***** Build " __FILE__ " at " __DATE__ " " __TIME__ "*****\n")   
+	printf("***** Running %s,\nBinary build date: %s @ %s by %s %d *****\n\n", \
+		  argv[0], __DATE__, __TIME__, COMP_TYP, COMP_VER);
 
-#include <cassert>
-#include <cstdio>
-#include <memory>
-#include <new>
+// Now let us start the application
+	printf("Starting main()\n");
+// Define joysticks as structure and initialize to zero both subfields (deviceCount, pointer to array of pointers to the specific devinces)
+	Joystruct joysticks = {0};
 
-#include <wrl/client.h>
+// Create per-process singleton object instance pointer "input" to acces the device input stream
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinput/igameinput
+	IGameInput* input;
+// Call function to get instances of the IGameInput interface, so: get a list of our controllers
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/functions/gameinputcreate
+	GameInputCreate(&input);
+// Create pointer "dispatcher" to object instance of class IGameInputDispatcher
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputdispatcher/igameinputdispatcher
+// By referencing IGameInputDispatcher, GameInput changes from "automatic mode" to "manual mode"
+// so we have to schedule the background work of the GameInput API later manually
+	IGameInputDispatcher* dispatcher;
+// Create a Dispatcher for manually scheduling GameInput background work (switching GameInput to "manual dispatch mode")
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinput/methods/igameinput_createdispatcher
+	input->CreateDispatcher(&dispatcher);
+// Create object instance "callbackId" of type GameInputCallbackToken (defined in GameInput.h as "typedef uint64_t GameInputCallbackToken;")
+// Device callbacks provide an asynchronous way to get informed about device status changes (e.g. device connects/disconnects)
+	GameInputCallbackToken callbackId;
+// Now we register our callback function "deviceChangeCallback" to be called
+// whenever a devices is connected or disconnected or a device property change
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinput/methods/igameinput_registerdevicecallback
+// "deviceChangeCall is called asynchronously and only in the stated events"
+// Parameter:
+// - 0 = no specific device selected (else its IGameInputDevice* has to be specified)
+// - Limit to kind/type "Controllers"
+// - No Limit on device states
+// - enumerate sychronously ("blocking" RegisterDeviceCallback until all callbacks are processed)
+// - relevant information for callback function - give the address of our "joysticks pointer to pointer array" to the async subroutine
+// - name of asynch subroutine: deviceChangeCallback (subroutine defined above)
+// - token identifying the registered callback function (if we have to cancel or unregister this callback function)
+	printf("Registering async callback procedure\n");
+	input->RegisterDeviceCallback(0, GameInputKindController, GameInputDeviceAnyStatus, GameInputBlockingEnumeration, &joysticks, deviceChangeCallback, &callbackId);
 
-#include <commctrl.h>
-#include <basetsd.h>
+// Define array of one controllers buttons as up to 64 button states
+	bool buttons[64];
+// Define array of one controllers switches array as enumerator of up to 64 switch states
+// (e.g. GameInputSwitchCenter = 0, GameInputSwitchUp = 1, ...)
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/enums/gameinputswitchposition
+	GameInputSwitchPosition switches[64];
 
-#pragma warning(push)
-#pragma warning(disable:6000 28251)
-#include <dinput.h>
-#pragma warning(pop)
+// Define array of one controllers axes as up to 64 axes floating point values
+	float axes[64];
 
-#include <dinputd.h>
-#include <oleauto.h>
-#include <shellapi.h>
+// Loop (nearly) endless
+	printf("Starting while-Loop for up to %i cycles with sleep %i msecs\n", waitloops,waitmsec);
+	printf("Press Ctrl-C to interrupt if you don't like to run it a whole day ;-)\n");
+	// Now start query cycles up to a whole day	
+	for (int whilecounter = 1 ; whilecounter < waitloops ; whilecounter++)
+	{
+		printf("\n*** while-Cycle %i ***\n", whilecounter);
+// Object instance "dispatcher" is of class IGameInputDispatcher, declaration see above
+// According to https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/IGameInputDispatcher/methods/igameinputdispatcher_dispatch
+// the dispatcher executes for at least one queue item, even if the quota is set to zero (as here)
+// In my understanding, this statement gives the async CALLBACK routine "deviceChangeCallback" a chance to execute ("manual dispatch")
+// https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/IGameInputDispatcher/igameinputdispatcher states:
+// "Allows you to take manual control of scheduling the background work run by the GameInput API.""
+// and that's what we do here.
+// Return value: true if work items are pending in the dispatcher's queue, false if no work items remain
+// Returns at the time that the queue is flushed
+		bool dispretc = dispatcher->Dispatch(0);
+		printf("GameInput dispatcher work to do: %s\n", dispretc ? "yes" : "no");
 
-#include "resource.h"
-
-//-----------------------------------------------------------------------------
-// Function-prototypes
-//-----------------------------------------------------------------------------
-INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
-BOOL CALLBACK    EnumObjectsCallback(const DIDEVICEOBJECTINSTANCE* pdidoi, VOID* pContext) noexcept;
-BOOL CALLBACK    EnumJoysticksCallback(const DIDEVICEINSTANCE* pdidInstance, VOID* pContext) noexcept;
-HRESULT InitDirectInput(HWND hDlg) noexcept;
-VOID FreeDirectInput() noexcept;
-HRESULT UpdateInputState(HWND hDlg) noexcept;
-
-// Stuff to filter out XInput devices
-#include <wbemidl.h>
-HRESULT SetupForIsXInputDevice() noexcept;
-bool IsXInputDevice(const GUID* pGuidProductFromDirectInput) noexcept;
-void CleanupForIsXInputDevice() noexcept;
-
-struct XINPUT_DEVICE_NODE
-{
-    DWORD dwVidPid;
-    XINPUT_DEVICE_NODE* pNext;
-};
-
-struct DI_ENUM_CONTEXT
-{
-    DIJOYCONFIG* pPreferredJoyCfg;
-    bool bPreferredJoyCfgValid;
-};
-
-// Enable this to indicate you want to filter out devices supported by XInput via -noxinput
-bool g_bFilterOutXinputDevices = false;
-
-XINPUT_DEVICE_NODE* g_pXInputDeviceList = nullptr;
-
-//-----------------------------------------------------------------------------
-// Defines, constants, and global variables
-//-----------------------------------------------------------------------------
-#define SAFE_DELETE(p)  { if(p) { delete (p);     (p)=nullptr; } }
-#define SAFE_RELEASE(p) { if(p) { (p)->Release(); (p)=nullptr; } }
-
-LPDIRECTINPUT8          g_pDI = nullptr;
-LPDIRECTINPUTDEVICE8    g_pJoystick = nullptr;
-
-
-using Microsoft::WRL::ComPtr;
-
-//-----------------------------------------------------------------------------
-// Name: WinMain()
-// Desc: Entry point for the application.  Since we use a simple dialog for 
-//       user interaction we don't need to pump messages.
-//-----------------------------------------------------------------------------
-int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int)
-{
-    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)))
-        return 1;
-
-    InitCommonControls();
-
-    int nNumArgs;
-    LPWSTR* pstrArgList = CommandLineToArgvW(GetCommandLineW(), &nNumArgs);
-    for (int iArg = 1; iArg < nNumArgs; iArg++)
-    {
-        WCHAR* strCmdLine = pstrArgList[iArg];
-
-        // Handle flag args
-        if (*strCmdLine == L'/' || *strCmdLine == L'-')
-        {
-            strCmdLine++;
-
-            const int nArgLen = (int)wcslen(L"noxinput");
-            if (_wcsnicmp(strCmdLine, L"noxinput", nArgLen) == 0 && strCmdLine[nArgLen] == 0)
-            {
-                g_bFilterOutXinputDevices = true;
-                continue;
-            }
-        }
-    }
-    LocalFree(pstrArgList);
-
-    // Display the main dialog box.
-    DialogBox(hInst, MAKEINTRESOURCE(IDD_JOYST_IMM), nullptr, MainDlgProc);
-
-    CoUninitialize();
-
-    return 0;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
-// Name: MainDialogProc
-// Desc: Handles dialog messages
-//-----------------------------------------------------------------------------
-INT_PTR CALLBACK MainDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    UNREFERENCED_PARAMETER(lParam);
-
-    switch (msg)
-    {
-    case WM_INITDIALOG:
-        if (FAILED(InitDirectInput(hDlg)))
-        {
-            MessageBoxW(nullptr, L"Error Initializing DirectInput",
-                L"DirectInput Sample", MB_ICONERROR | MB_OK);
-            EndDialog(hDlg, 0);
-        }
-
-        // Set a timer to go off 30 times a second. At every timer message
-        // the input device will be read
-        SetTimer(hDlg, 0, 1000 / 30, nullptr);
-        return TRUE;
-
-    case WM_ACTIVATE:
-        if (WA_INACTIVE != wParam && g_pJoystick)
-        {
-            // Make sure the device is acquired, if we are gaining focus.
-            g_pJoystick->Acquire();
-        }
-        return TRUE;
-
-    case WM_TIMER:
-        // Update the input device every timer message
-        if (FAILED(UpdateInputState(hDlg)))
-        {
-            KillTimer(hDlg, 0);
-            MessageBoxW(nullptr, L"Error Reading Input State. " \
-                L"The sample will now exit.", L"DirectInput Sample",
-                MB_ICONERROR | MB_OK);
-            EndDialog(hDlg, TRUE);
-        }
-        return TRUE;
-
-    case WM_COMMAND:
-        switch (LOWORD(wParam))
-        {
-        case IDCANCEL:
-            EndDialog(hDlg, 0);
-            return TRUE;
-        }
-
-    case WM_DESTROY:
-        // Cleanup everything
-        KillTimer(hDlg, 0);
-        FreeDirectInput();
-        return TRUE;
-    }
-
-    return FALSE; // Message not handled 
-}
-
-
-
-
-//-----------------------------------------------------------------------------
-// Name: InitDirectInput()
-// Desc: Initialize the DirectInput variables.
-//-----------------------------------------------------------------------------
-HRESULT InitDirectInput(HWND hDlg) noexcept
-{
-    HRESULT hr;
-
-    // Register with the DirectInput subsystem and get a pointer
-    // to a IDirectInput interface we can use.
-    // Create a DInput object
-    if (FAILED(hr = DirectInput8Create(GetModuleHandle(nullptr), DIRECTINPUT_VERSION,
-        IID_IDirectInput8, (VOID**)&g_pDI, nullptr)))
-        return hr;
-
-    if (g_bFilterOutXinputDevices)
-        SetupForIsXInputDevice();
-
-    DIJOYCONFIG PreferredJoyCfg = {};
-    DI_ENUM_CONTEXT enumContext;
-    enumContext.pPreferredJoyCfg = &PreferredJoyCfg;
-    enumContext.bPreferredJoyCfgValid = false;
-
-    ComPtr<IDirectInputJoyConfig8> pJoyConfig;
-    if (FAILED(hr = g_pDI->QueryInterface(IID_IDirectInputJoyConfig8, (void**)&pJoyConfig)))
-        return hr;
-
-    PreferredJoyCfg.dwSize = sizeof(PreferredJoyCfg);
-    if (SUCCEEDED(pJoyConfig->GetConfig(0, &PreferredJoyCfg, DIJC_GUIDINSTANCE)))
-    {
-        // This function is expected to fail if no joystick is attached
-        enumContext.bPreferredJoyCfgValid = true;
-    }
-
-    // Look for a simple joystick we can use for this sample program.
-    if (FAILED(hr = g_pDI->EnumDevices(DI8DEVCLASS_GAMECTRL,
-        EnumJoysticksCallback,
-        &enumContext, DIEDFL_ATTACHEDONLY)))
-        return hr;
-
-    if (g_bFilterOutXinputDevices)
-        CleanupForIsXInputDevice();
-
-    // Make sure we got a joystick
-    if (!g_pJoystick)
-    {
-        MessageBoxW(nullptr, L"Joystick not found. The sample will now exit.",
-            L"DirectInput Sample",
-            MB_ICONERROR | MB_OK);
-        EndDialog(hDlg, 0);
-        return S_OK;
-    }
-
-    // Set the data format to "simple joystick" - a predefined data format 
-    //
-    // A data format specifies which controls on a device we are interested in,
-    // and how they should be reported. This tells DInput that we will be
-    // passing a DIJOYSTATE2 structure to IDirectInputDevice::GetDeviceState().
-    if (FAILED(hr = g_pJoystick->SetDataFormat(&c_dfDIJoystick2)))
-        return hr;
-
-    // Set the cooperative level to let DInput know how this device should
-    // interact with the system and with other DInput applications.
-    if (FAILED(hr = g_pJoystick->SetCooperativeLevel(hDlg,
-        DISCL_EXCLUSIVE | DISCL_FOREGROUND)))
-        return hr;
-
-    // Enumerate the joystick objects. The callback function enabled user
-    // interface elements for objects that are found, and sets the min/max
-    // values property for discovered axes.
-    if (FAILED(hr = g_pJoystick->EnumObjects(EnumObjectsCallback,
-        (VOID*)hDlg, DIDFT_ALL)))
-        return hr;
-
-    return S_OK;
-}
-
-
-//-----------------------------------------------------------------------------
-// Enum each PNP device using WMI and check each device ID to see if it contains 
-// "IG_" (ex. "VID_045E&PID_028E&IG_00").  If it does, then it's an XInput device
-// Unfortunately this information can not be found by just using DirectInput.
-// Checking against a VID/PID of 0x028E/0x045E won't find 3rd party or future 
-// XInput devices.
+// Now let's start the processing of the "GameInput stream" for a specific controller device,
+// a continuous data stream that consists of every action (buttons, switches, axis) on all filtered devices
+		printf("Starting for-Loop over %i Joystick devices\n", joysticks.deviceCount);
+		for (uint32_t i = 0; i < joysticks.deviceCount; ++i)
+		{
+// Define "reading" as instance of class IGameInputReading and capture/process the raw input data...
+// Every input state change received from a device is captured in an IGameInputReading instance. 
+			IGameInputReading* reading;
+// ...and call moethod "GetCurrentReading" of object instance "input" to initially access the controller input stream, see
+// https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/enums/gameinputkind
+// Filter is GameInputKindController: "Combination of Axis, Button, and Switch"
+// (another possible filter for Saitek Trimwheel would be "GameInputKindControllerAxis - Controller input from sticks")
+// The device is selected by inner loop variable i (so controller devices are processed sequentially)
+// The last parameter (object instance "reading") is "the input reading to be returned.
+// Returns NULL on failure
 //
-// This function stores the list of xinput devices in a linked list 
-// at g_pXInputDeviceList, and IsXInputDevice() searchs that linked list
-//-----------------------------------------------------------------------------
-namespace
-{
-    struct bstr_deleter { void operator()(void* p) noexcept { SysFreeString(static_cast<BSTR>(p)); } };
-
-    using ScopedBSTR = std::unique_ptr<OLECHAR[], bstr_deleter>;
-}
-
-HRESULT SetupForIsXInputDevice() noexcept
-{
-    // COM needs to be initialized on this thread before the enumeration.
-
-    // So we can call VariantClear() later, even if we never had a successful IWbemClassObject::Get().
-    VARIANT var = {};
-    VariantInit(&var);
-
-    // Create WMI
-    ComPtr<IWbemLocator> pIWbemLocator;
-    HRESULT hr = CoCreateInstance(__uuidof(WbemLocator),
-        nullptr,
-        CLSCTX_INPROC_SERVER,
-        IID_PPV_ARGS(&pIWbemLocator));
-    if (FAILED(hr) || pIWbemLocator == nullptr)
-        return hr;
-
-    // Create BSTRs for WMI
-    ScopedBSTR bstrNamespace(SysAllocString(L"\\\\.\\root\\cimv2"));
-    ScopedBSTR bstrClassName(SysAllocString(L"Win32_PNPEntity"));
-    ScopedBSTR bstrDeviceID(SysAllocString(L"DeviceID"));
-    if (!bstrNamespace || !bstrClassName || !bstrDeviceID)
-        return E_OUTOFMEMORY;
-
-    // Connect to WMI 
-    ComPtr<IWbemServices> pIWbemServices;
-    hr = pIWbemLocator->ConnectServer(bstrNamespace.get(), nullptr, nullptr, 0L,
-        0L, nullptr, nullptr, &pIWbemServices);
-    if (FAILED(hr) || pIWbemServices == nullptr)
-        return hr;
-
-    // Switch security level to IMPERSONATE
-    hr = CoSetProxyBlanket(pIWbemServices.Get(),
-        RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr,
-        RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
-        nullptr, EOAC_NONE);
-    if (FAILED(hr))
-        return hr;
-
-    // Get list of Win32_PNPEntity devices
-    ComPtr<IEnumWbemClassObject> pEnumDevices;
-    hr = pIWbemServices->CreateInstanceEnum(bstrClassName.get(), 0, nullptr, &pEnumDevices);
-    if (FAILED(hr) || pEnumDevices == nullptr)
-        return hr;
-
-    // Loop over all devices
-    IWbemClassObject* pDevices[20] = {};
-    for (;;)
-    {
-        ULONG uReturned = 0;
-        hr = pEnumDevices->Next(10000, _countof(pDevices), pDevices, &uReturned);
-        if (FAILED(hr))
-            return hr;
-
-        if (uReturned == 0)
-            break;
-
-        assert(uReturned <= _countof(pDevices));
-        _Analysis_assume_(uReturned <= _countof(pDevices));
-
-        for (size_t iDevice = 0; iDevice < uReturned; ++iDevice)
-        {
-            if (!pDevices[iDevice])
-                continue;
-
-            // For each device, get its device ID
-            hr = pDevices[iDevice]->Get(bstrDeviceID.get(), 0L, &var, nullptr, nullptr);
-            if (SUCCEEDED(hr) && var.vt == VT_BSTR && var.bstrVal != nullptr)
-            {
-                // Check if the device ID contains "IG_".  If it does, then it's an XInput device
-                // Unfortunately this information can not be found by just using DirectInput 
-                if (wcsstr(var.bstrVal, L"IG_"))
-                {
-                    // If it does, then get the VID/PID from var.bstrVal
-                    DWORD dwPid = 0, dwVid = 0;
-                    const WCHAR* strVid = wcsstr(var.bstrVal, L"VID_");
-                    if (strVid && swscanf_s(strVid, L"VID_%4X", &dwVid) != 1)
-                        dwVid = 0;
-                    const WCHAR* strPid = wcsstr(var.bstrVal, L"PID_");
-                    if (strPid && swscanf_s(strPid, L"PID_%4X", &dwPid) != 1)
-                        dwPid = 0;
-
-                    const DWORD dwVidPid = MAKELONG(dwVid, dwPid);
-
-                    // Add the VID/PID to a linked list
-                    auto pNewNode = new (std::nothrow) XINPUT_DEVICE_NODE;
-                    if (pNewNode)
-                    {
-                        pNewNode->dwVidPid = dwVidPid;
-                        pNewNode->pNext = g_pXInputDeviceList;
-                        g_pXInputDeviceList = pNewNode;
-                    }
-                }
-            }
-
-            VariantClear(&var);
-            SAFE_RELEASE(pDevices[iDevice]);
-        }
-    }
-
-    VariantClear(&var);
-
-    for (size_t iDevice = 0; iDevice < _countof(pDevices); ++iDevice)
-        SAFE_RELEASE(pDevices[iDevice]);
-
-    return hr;
-}
-
-
-//-----------------------------------------------------------------------------
-// Returns true if the DirectInput device is also an XInput device.
-// Call SetupForIsXInputDevice() before, and CleanupForIsXInputDevice() after
-//-----------------------------------------------------------------------------
-bool IsXInputDevice(const GUID* pGuidProductFromDirectInput) noexcept
-{
-    // Check each xinput device to see if this device's vid/pid matches
-    XINPUT_DEVICE_NODE* pNode = g_pXInputDeviceList;
-    while (pNode)
-    {
-        if (pNode->dwVidPid == pGuidProductFromDirectInput->Data1)
-            return true;
-        pNode = pNode->pNext;
-    }
-
-    return false;
-}
-
-
-//-----------------------------------------------------------------------------
-// Cleanup needed for IsXInputDevice()
-//-----------------------------------------------------------------------------
-void CleanupForIsXInputDevice() noexcept
-{
-    // Cleanup linked list
-    XINPUT_DEVICE_NODE* pNode = g_pXInputDeviceList;
-    while (pNode)
-    {
-        XINPUT_DEVICE_NODE* pDelete = pNode;
-        pNode = pNode->pNext;
-        SAFE_DELETE(pDelete);
-    }
-}
-
-
-
-//-----------------------------------------------------------------------------
-// Name: EnumJoysticksCallback()
-// Desc: Called once for each enumerated joystick. If we find one, create a
-//       device interface on it so we can play with it.
-//-----------------------------------------------------------------------------
-BOOL CALLBACK EnumJoysticksCallback(const DIDEVICEINSTANCE* pdidInstance,
-    VOID* pContext) noexcept
-{
-    auto pEnumContext = static_cast<DI_ENUM_CONTEXT*>(pContext);
-
-    if (g_bFilterOutXinputDevices && IsXInputDevice(&pdidInstance->guidProduct))
-        return DIENUM_CONTINUE;
-
-    // Skip anything other than the perferred joystick device as defined by the control panel.  
-    // Instead you could store all the enumerated joysticks and let the user pick.
-    if (pEnumContext->bPreferredJoyCfgValid &&
-        !IsEqualGUID(pdidInstance->guidInstance, pEnumContext->pPreferredJoyCfg->guidInstance))
-        return DIENUM_CONTINUE;
-
-    // Obtain an interface to the enumerated joystick.
-    HRESULT hr = g_pDI->CreateDevice(pdidInstance->guidInstance, &g_pJoystick, nullptr);
-
-    // If it failed, then we can't use this joystick. (Maybe the user unplugged
-    // it while we were in the middle of enumerating it.)
-    if (FAILED(hr))
-        return DIENUM_CONTINUE;
-
-    // Stop enumeration. Note: we're just taking the first joystick we get. You
-    // could store all the enumerated joysticks and let the user pick.
-    return DIENUM_STOP;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
-// Name: EnumObjectsCallback()
-// Desc: Callback function for enumerating objects (axes, buttons, POVs) on a 
-//       joystick. This function enables user interface elements for objects
-//       that are found to exist, and scales axes min/max values.
-//-----------------------------------------------------------------------------
-BOOL CALLBACK EnumObjectsCallback(const DIDEVICEOBJECTINSTANCE* pdidoi,
-    VOID* pContext) noexcept
-{
-    auto hDlg = static_cast<HWND>(pContext);
-
-    static int nSliderCount = 0;  // Number of returned slider controls
-    static int nPOVCount = 0;     // Number of returned POV controls
-
-    // For axes that are returned, set the DIPROP_RANGE property for the
-    // enumerated axis in order to scale min/max values.
-    if (pdidoi->dwType & DIDFT_AXIS)
-    {
-        DIPROPRANGE diprg;
-        diprg.diph.dwSize = sizeof(DIPROPRANGE);
-        diprg.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-        diprg.diph.dwHow = DIPH_BYID;
-        diprg.diph.dwObj = pdidoi->dwType; // Specify the enumerated axis
-        diprg.lMin = -1000;
-        diprg.lMax = +1000;
-
-        // Set the range for the axis
-        if (FAILED(g_pJoystick->SetProperty(DIPROP_RANGE, &diprg.diph)))
-            return DIENUM_STOP;
-
-    }
-
-
-    // Set the UI to reflect what objects the joystick supports
-    if (pdidoi->guidType == GUID_XAxis)
-    {
-        EnableWindow(GetDlgItem(hDlg, IDC_X_AXIS), TRUE);
-        EnableWindow(GetDlgItem(hDlg, IDC_X_AXIS_TEXT), TRUE);
-    }
-    if (pdidoi->guidType == GUID_YAxis)
-    {
-        EnableWindow(GetDlgItem(hDlg, IDC_Y_AXIS), TRUE);
-        EnableWindow(GetDlgItem(hDlg, IDC_Y_AXIS_TEXT), TRUE);
-    }
-    if (pdidoi->guidType == GUID_ZAxis)
-    {
-        EnableWindow(GetDlgItem(hDlg, IDC_Z_AXIS), TRUE);
-        EnableWindow(GetDlgItem(hDlg, IDC_Z_AXIS_TEXT), TRUE);
-    }
-    if (pdidoi->guidType == GUID_RxAxis)
-    {
-        EnableWindow(GetDlgItem(hDlg, IDC_X_ROT), TRUE);
-        EnableWindow(GetDlgItem(hDlg, IDC_X_ROT_TEXT), TRUE);
-    }
-    if (pdidoi->guidType == GUID_RyAxis)
-    {
-        EnableWindow(GetDlgItem(hDlg, IDC_Y_ROT), TRUE);
-        EnableWindow(GetDlgItem(hDlg, IDC_Y_ROT_TEXT), TRUE);
-    }
-    if (pdidoi->guidType == GUID_RzAxis)
-    {
-        EnableWindow(GetDlgItem(hDlg, IDC_Z_ROT), TRUE);
-        EnableWindow(GetDlgItem(hDlg, IDC_Z_ROT_TEXT), TRUE);
-    }
-    if (pdidoi->guidType == GUID_Slider)
-    {
-        switch (nSliderCount++)
-        {
-        case 0:
-            EnableWindow(GetDlgItem(hDlg, IDC_SLIDER0), TRUE);
-            EnableWindow(GetDlgItem(hDlg, IDC_SLIDER0_TEXT), TRUE);
-            break;
-
-        case 1:
-            EnableWindow(GetDlgItem(hDlg, IDC_SLIDER1), TRUE);
-            EnableWindow(GetDlgItem(hDlg, IDC_SLIDER1_TEXT), TRUE);
-            break;
-        }
-    }
-    if (pdidoi->guidType == GUID_POV)
-    {
-        switch (nPOVCount++)
-        {
-        case 0:
-            EnableWindow(GetDlgItem(hDlg, IDC_POV0), TRUE);
-            EnableWindow(GetDlgItem(hDlg, IDC_POV0_TEXT), TRUE);
-            break;
-
-        case 1:
-            EnableWindow(GetDlgItem(hDlg, IDC_POV1), TRUE);
-            EnableWindow(GetDlgItem(hDlg, IDC_POV1_TEXT), TRUE);
-            break;
-
-        case 2:
-            EnableWindow(GetDlgItem(hDlg, IDC_POV2), TRUE);
-            EnableWindow(GetDlgItem(hDlg, IDC_POV2_TEXT), TRUE);
-            break;
-
-        case 3:
-            EnableWindow(GetDlgItem(hDlg, IDC_POV3), TRUE);
-            EnableWindow(GetDlgItem(hDlg, IDC_POV3_TEXT), TRUE);
-            break;
-        }
-    }
-
-    return DIENUM_CONTINUE;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
-// Name: UpdateInputState()
-// Desc: Get the input device's state and display it.
-//-----------------------------------------------------------------------------
-HRESULT UpdateInputState(HWND hDlg) noexcept
-{
-    if (!g_pJoystick)
-        return S_OK;
-
-    // Poll the device to read the current state
-    HRESULT hr = g_pJoystick->Poll();
-    if (FAILED(hr))
-    {
-        // DInput is telling us that the input stream has been
-        // interrupted. We aren't tracking any state between polls, so
-        // we don't have any special reset that needs to be done. We
-        // just re-acquire and try again.
-        hr = g_pJoystick->Acquire();
-        while (hr == DIERR_INPUTLOST)
-            hr = g_pJoystick->Acquire();
-
-        // hr may be DIERR_OTHERAPPHASPRIO or other errors.  This
-        // may occur when the app is minimized or in the process of 
-        // switching, so just try again later 
-        return S_OK;
-    }
-
-    // Get the input's device state
-    DIJOYSTATE2 js;
-    if (FAILED(hr = g_pJoystick->GetDeviceState(sizeof(DIJOYSTATE2), &js)))
-        return hr; // The device should have been acquired during the Poll()
-
-    // Display joystick state to dialog
-    WCHAR strText[512] = {};
-
-    // Axes
-    swprintf_s(strText, L"%ld", js.lX);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_X_AXIS), strText);
-    swprintf_s(strText, L"%ld", js.lY);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_Y_AXIS), strText);
-    swprintf_s(strText, L"%ld", js.lZ);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_Z_AXIS), strText);
-    swprintf_s(strText, L"%ld", js.lRx);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_X_ROT), strText);
-    swprintf_s(strText, L"%ld", js.lRy);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_Y_ROT), strText);
-    swprintf_s(strText, L"%ld", js.lRz);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_Z_ROT), strText);
-
-    // Slider controls
-    swprintf_s(strText, L"%ld", js.rglSlider[0]);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_SLIDER0), strText);
-    swprintf_s(strText, L"%ld", js.rglSlider[1]);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_SLIDER1), strText);
-
-    // Points of view
-    swprintf_s(strText, L"%lu", js.rgdwPOV[0]);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_POV0), strText);
-    swprintf_s(strText, L"%lu", js.rgdwPOV[1]);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_POV1), strText);
-    swprintf_s(strText, L"%lu", js.rgdwPOV[2]);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_POV2), strText);
-    swprintf_s(strText, L"%lu", js.rgdwPOV[3]);
-    SetWindowTextW(GetDlgItem(hDlg, IDC_POV3), strText);
-
-
-    // Fill up text with which buttons are pressed
-    wcscpy_s(strText, L"");
-    for (int i = 0; i < 128; i++)
-    {
-        if (js.rgbButtons[i] & 0x80)
-        {
-            WCHAR sz[128] = {};
-            swprintf_s(sz, L"%02d ", i);
-            wcscat_s(strText, sz);
-        }
-    }
-
-    SetWindowTextW(GetDlgItem(hDlg, IDC_BUTTONS), strText);
-
-    return S_OK;
-}
-
-
-
-
-//-----------------------------------------------------------------------------
-// Name: FreeDirectInput()
-// Desc: Initialize the DirectInput variables.
-//-----------------------------------------------------------------------------
-VOID FreeDirectInput() noexcept
-{
-    // Unacquire the device one last time just in case 
-    // the app tried to exit while the device is still acquired.
-    if (g_pJoystick)
-        g_pJoystick->Unacquire();
-
-    // Release any DirectInput objects.
-    SAFE_RELEASE(g_pJoystick);
-    SAFE_RELEASE(g_pDI);
+// SUCCEEDED seems to be a macro of winerror.h - although winerror.h isn't included
+// Location: C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared\winerror.h
+// Probably from other (nested) #include
+//
+			if (SUCCEEDED(input->GetCurrentReading(GameInputKindController, joysticks.devices[i], &reading)))
+			{
+				printf("--- Processing Joystick %d ---\n", i);
+
+// Check device information for actual controller joysticks.devices[i], according to
+// https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputdevice/methods/igameinputdevice_getdeviceinfo
+// https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/structs/gameinputdeviceinfo
+// We have to find the Saitek ProFlight Cessna Trim Wheel (VID: 0x6A3, PID: 0xBD4)
+//					
+				printf("  Now GetDeviceInfo for ctrl %i\n",i);
+				auto joydevinfo = joysticks.devices[i]->GetDeviceInfo();
+				memsize = joydevinfo->infoSize;
+// Check returned structure at least as big as the first fields we want to process
+				if (memsize >= GmInDevInfoHdr ) {
+					printf ("  structure length (%i vs. prefix min: %i)\n", memsize, GmInDevInfoHdr);
+					vid = joydevinfo->vendorId;
+					pid = joydevinfo->productId;
+					rev = joydevinfo->revisionNumber;
+					ifc = joydevinfo->interfaceNumber;
+					col = joydevinfo->collectionNumber;
+					printf ("  InfoSize: %i, VID: %#04x, PID: %#04x, REV: %#04x, IFC: %#04x, COL: %#04x\n", memsize, vid, pid, rev, ifc, col);
+				} else {
+					printf ("GetDeviceInfo() return structure length too short (%i vs. prefix min: %i)\n", memsize, GmInDevInfoHdr);
+				}
+
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputreading/methods/igameinputreading_getcontrolleraxisstate
+// Capture the axes, switches and buttons of the specific oysticks.devices[i]" controller into our own arrays
+				printf("  Reading axes, switches and buttons for ctrl %i\n",i);
+				reading->GetControllerAxisState(ARRAYSIZE(axes), axes);
+				reading->GetControllerSwitchState(ARRAYSIZE(switches), switches);
+				reading->GetControllerButtonState(ARRAYSIZE(buttons), buttons);
+// Get number of axes, switches, buttons				
+				nbraxes = reading->GetControllerAxisCount();
+				nbrswch = reading->GetControllerSwitchCount();
+				nbrbutt = reading->GetControllerButtonCount();
+// Now print what we have captured from the GameInput input stream for this specific controller
+
+// First the axes
+				if (nbraxes > 0) {
+					printf("  Axes - ");
+					for (uint32_t i = 0; i < nbraxes; ++i) {
+						printf("%d:%f ", i, axes[i]);
+					}
+				} else {
+					printf (" No Axes ");
+				}
+// Second the switches
+				if (nbrswch > 0) {
+					printf("Switches - ");
+					for (uint32_t i = 0; i < nbrswch; ++i) {
+						printf("%d:%d ", i, switches[i]);
+					}
+				} else {
+					printf (" No Swi  ");
+				}
+// Third the buttons
+				if (nbrbutt > 0) {
+					printf("Buttons - ");
+					for (uint32_t i = 0; i < nbrbutt; ++i) {
+						if (buttons[i]) printf("%d ", i);
+					}
+				} else {
+					printf (" No Buttn");
+				}
+// puts just to print newline
+				puts("");
+// Release the instance "reading" of class IGameInputReading used for this cycle
+				reading->Release();
+			} else {
+				printf("Nix Joystick found\n");
+			}
+		}
+// Wait a short moment, just not to overload our system
+		Sleep(waitmsec); // Wait 500 msecs
+	}
 }

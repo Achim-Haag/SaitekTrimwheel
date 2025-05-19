@@ -7,9 +7,17 @@
 ## !.vscode/extensions.json
 ## !.vscode/*.code-snippets
 
-# CMake created files (.exe will be copied to source folder by CMake add_custom_command
+# MSVC Build created folder ?
 build/*
+# CMake created folder (.exe will be copied from subfolder to source folder by CMake add_custom_command
 out/*
+
+## 18.05.25/AH several files I don't want under Git control, e.g.
+## Joystick-Input-Examples-main : Github Directory-Download https://github.com/MysteriousJ/Joystick-Input-Examples, I do not change the original files !
+## New_GameInput_Lib : Newer GameInput.lib/.h, downloaded and extracted from https://www.nuget.org/packages/Microsoft.GameInput, currently unused
+## AH3_dircache_script : my gaming rig's check script, contains HID/VID of Saitek (Pro Flight) Trimwheel
+##
+not_with_git/*
 
 # Local History for Visual Studio Code
 ## 13.05.25/AH not created, don't know why...?!?
