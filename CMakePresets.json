@@ -2,27 +2,52 @@
     "version": 8,
     "configurePresets": [
         {
-            "name": "Win10_MSVC-17-2022-x64",
-            "displayName": "Visual Studio Community 2022 Release - amd64",
+            "name": "Win10_MSVC-17-2022-x64-Base",
+            "displayName": "Visual Studio Community 2022 Base - amd64",
             "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
             "generator": "Visual Studio 17 2022",
             "toolset": "host=x64",
             "architecture": "x64",
-            "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
                 "CMAKE_C_COMPILER": "cl.exe",
                 "CMAKE_CXX_COMPILER": "cl.exe"
+            }
+        },
+        {
+            "name": "Win10_MSVC-17-2022-x64-Debug",
+            "displayName": "Visual Studio Community 2022 Debug - amd64",
+            "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
+			"inherits": [ "Win10_MSVC-17-2022-x64-Base" ],
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug"
+            }
+        },
+        {
+            "name": "Win10_MSVC-17-2022-x64-Release",
+            "displayName": "Visual Studio Community 2022 Release - amd64",
+            "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
+			"inherits": [ "Win10_MSVC-17-2022-x64-Base" ],
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Release"
             }
         }
     ],
     "buildPresets": [
         {
-            "name": "Win10_MSVC-17-2022-x64-debug",
-            "displayName": "Visual Studio Community 2022 Release - amd64 - Debug",
-            "configurePreset": "Win10_MSVC-17-2022-x64",
+            "name": "Win10_MSVC-17-2022-x64-build-debug",
+            "displayName": "Visual Studio Community 2022 Build Debug - amd64",
+            "configurePreset": "Win10_MSVC-17-2022-x64-Debug",
             "configuration": "Debug"
+        },
+        {
+            "name": "Win10_MSVC-17-2022-x64-build-release",
+            "displayName": "Visual Studio Community 2022 Build Release - amd64",
+            "configurePreset": "Win10_MSVC-17-2022-x64-Release",
+            "configuration": "Release"
         }
+		
     ]
 }

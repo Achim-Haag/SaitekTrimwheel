@@ -4,7 +4,7 @@ message(STATUS ">>> Start preparing environment")
 
 # Enable function cmake_print_variables (but printed only on save to CMakeLists.txt !)
 include(CMakePrintHelpers)
-cmake_print_variables(CMAKE_CURRENT_BINARY_DIR CMAKE_BUILD_TYPE)
+cmake_print_variables(CMAKE_CURRENT_BINARY_DIR CMAKE_CONFIGURATION_TYPES)
 
 # minimum CMake version
 CMAKE_MINIMUM_REQUIRED(VERSION 3.31)
@@ -21,7 +21,7 @@ message(STATUS ">>> Prepare for Microsoft Visual C/C++")
 
 # set variables for Windows Microsoft Visual C/C++ environment
 # MSVC creates .exe in subfolder debug
-set(MyExeOutpath "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}")
+set(MyExeOutpath "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CONFIGURATION_TYPES}")
 set(MyExeSuffix  ".exe")
 set(MySubmodules "$<TARGET_OBJECTS:getopt>")
 cmake_print_variables(MyExeOutpath MyExeSuffix MySubmodules)
