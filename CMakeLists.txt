@@ -20,7 +20,7 @@ enable_testing()
 message(STATUS ">>> Prepare for Microsoft Visual C/C++")
 
 # set variables for Windows Microsoft Visual C/C++ environment
-# MSVC creates .exe in subfolder debug
+# MSVC creates .exe in subfolders "release" or "debug"
 set(MyExeOutpath "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CONFIGURATION_TYPES}")
 set(MyExeSuffix  ".exe")
 set(MySubmodules "$<TARGET_OBJECTS:getopt>")

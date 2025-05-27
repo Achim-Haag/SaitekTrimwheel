@@ -1,24 +1,55 @@
-// 
-// 13.05.25/AH derived from https://github.com/MysteriousJ/Joystick-Input-Examples
-//		copy of content of "gameinput.cpp"
-//
+/*
+	Program to check the status of a Saitek ProFlight Trimwheel (connected by USB)
+	as this device doesn't active its axis when plugged in before starting the computer,
+	in this case (axis value = 0), the wheel has to be turned some revolutions.
+	So this Program should detect the state of the trimwheel's axis and set a corresponding return code
 
-// Trick to see where SUCCEEDED is defined, leads to error msg
-// 		C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared\winerror.h(29881,9):
-//		warning C4005: "SUCCEEDED": Makro-Neudefinition
-//		[C:\Users\Achmed\Git_Repos_AH1\SaitekTrimwheel\out\build\Win10_MSVC-17-2022-x64\SaitekTrimwheel.vcxproj]
-// now I know, definition of SUCCEEDED results from definition in winerror.h
+	Modifications:
+	13.05.25/AH derived from https://github.com/MysteriousJ/Joystick-Input-Examples
+		copy of content of "gameinput.cpp"
+	27.05.25/AH after commenting and modifying the source to understand its function
+		and to get deeper in Microsoft Windows GameInput API, now changing for my needs.
+*/
+
+/*
+	Trick to see where SUCCEEDED is defined, leads to error msg
+		C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared\winerror.h(29881,9):
+		warning C4005: "SUCCEEDED": Makro-Neudefinition
+		[C:\Users\Achmed\Git_Repos_AH1\SaitekTrimwheel\out\build\Win10_MSVC-17-2022-x64\SaitekTrimwheel.vcxproj]
+	now I know, definition of SUCCEEDED results from definition in winerror.h
+*/
 // Only activated once to find the location of SUCCEEDED definition.
 // ##define SUCCEEDED 3.1415927
 
-// Include MS GameInput API V.0,
-// see https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-overview
-// and https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-nuget
-// API: https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/gameinput_members
+// To convert numeric preprocessor variable to string, so it could be printed by #pragma
+// The first: MYSTRINGINQUOTES returns the value of x in quotes, the second: MYSTRING resolves the MYSTRINGINQUOTES macro
+// see also https://gcc.gnu.org/onlinedocs/cpp/Stringizing.html
+#define MYSTRINGQUOTES(s) #s
+#define MYSTRING(s) MYSTRINGQUOTES(s)
+
+/*
+  Global section
+  We define global variables before the "main" function, so they're available to all functions in this module
+*/
+
+/*
+	Include MS GameInput API V.0,
+	see https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-overview
+	and https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-nuget
+	API: https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/gameinput_members
+*/	
 #include "GameInput.h"
 
 // For other nice things ;-)
 #include <stdio.h>
+// for _kbhit(), _getch()
+#include <conio.h>
+// for toupper()
+#include <ctype.h>
+
+// Windows-specific getopt
+#include "getopt.h"   // see https://github.com/alex85k/wingetopt/tree/master
+
 
 // Number of controllers and pointer to pointer array (name changed from "Joysticks" to "Joystruct" for better reading)
 struct Joystruct
@@ -36,14 +67,17 @@ const int GmInDevInfoHdr = sizeof(GameInputDeviceInfo().infoSize) +
 
 // Constants for while-loop to restrict to max. one day dependent on cycle-sleep
 // Let the program run, but not endless ! 500 msec sleep time -> one day has 86400 seconds
-	const int waitmsec = 500 ;
-	const int waitloops = 86400 * 1000 / waitmsec ;
+const int waitmsec = 500 ;
+const int waitloops = 86400 * 1000 / waitmsec ;
 
 // Variables for processing GameInputDeviceInfo structure
 int memsize, vid, pid, rev, ifc, col = 0;
 
 // Variables for processing axes, switches, buttons
 int nbraxes, nbrswch, nbrbutt = 0;
+
+// Default: no verbosity
+static int verbolvl = 0;         
 
 // #############################################################################################################
 // Start of asynchronous subroutine
@@ -73,11 +107,11 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 // meaning: the "if" executes its tree as a (new) device connects
 	if (currentStatus & GameInputDeviceConnected)
 	{
-		for (uint32_t i = 0; i < joysticks->deviceCount; ++i)
+		for (uint32_t devctrnew = 0; devctrnew < joysticks->deviceCount; ++devctrnew)
 		{
 // Check if the new contoller device is already in our list of controllers, if so, do nothing and return to caller
-			printf("## callback: checking device %i", i);
-			if (joysticks->devices[i] == device) {
+			printf("## callback: checking device %i", devctrnew);
+			if (joysticks->devices[devctrnew] == device) {
 				printf("## callback: routine leaving, joystick unchanged");
 				return;
 			}
@@ -118,12 +152,98 @@ int main(int argc, char** argv)
 #endif
 
 // Just to get information about the compile time at compilation (#pragma message) and execution (printf)
-#pragma message ("***** Build " __FILE__ " at " __DATE__ " " __TIME__ "*****\n")   
+#pragma message ("***** " COMP_TYP " V." MYSTRING(COMP_VER) " Compile " __FILE__ " at " __DATE__ " " __TIME__ "*****\n")   
 	printf("***** Running %s,\nBinary build date: %s @ %s by %s %d *****\n\n", \
 		  argv[0], __DATE__, __TIME__, COMP_TYP, COMP_VER);
 
 // Now let us start the application
 	printf("Starting main()\n");
+
+// Process option parameters from commandline
+// ################################################################################ ANF
+/*
+  Process commandline parameters with Windows-specific getopt.c
+  getopt is a well-known function in the Unix environment and shells to parse argument lists,
+  see https://en.wikipedia.org/wiki/Getopt 
+  or https://www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html (the sample I used here)
+  The "main" function has to be defined with arguments "(int argc, char** argv)" (char** is a pointer to a pointer list)
+*/
+	printf("Process commandline parameters by getopt.c\n");
+	char *verbosity = NULL;   // Parameter "-v <number>", number = 1 : lowest verbosity
+	bool waitfortrimwheel = false;   // Parameter "-w : wait fo trimwheel axis to become nonzero
+	bool cheatword = false;   // Parameter "-c" : show each word to guess in advance
+
+/*
+  Variables defined for and by getopt.c (https://www.gnu.org/software/libc/manual/html_node/Using-Getopt.html)
+  Call : getopt(int argc, char* const *argv, const char* options)
+  argc = number of parameters in argv,
+  argv = pointer to pointerlist (i.e. to a pointer array), each pointer in pointerlist points to a commandline parameter
+  options = string with allowed commandline parameters. Colon after parameter means: parameter must have a following string value
+*/  
+	int cmdline_arg = 0;      // Returns the next commandline parameter from getopt prefixed by "-", else a value of -1
+	int opterr = 0;           // getopt.c behaviour regarding error handling; 0 = silent but return "?" in case of error", not 0 = print msg
+// int optopt in getopt.h     commandline parameter not specified in third parameter of getopt call, i.e. parameter not allowed
+// int optind in getopt.h     set by getopt.c to the index of the next elemnt in argv. At end: points to first unprocessed argv element
+// char* optarg in getopt.h   set by getopt.c to the option value behind the processed commandline parameter (e.g. "1" for "-v 1")
+
+/* Now parse the given-to-main commandline parameters */
+/* Implemented: "-h" = help; "-v <number>" = verbosity with level (1=lowest); -f = fixed random generator value (NULL)*/
+/* The colon after an option requests a value behind an option character */
+	while ((cmdline_arg = getopt (argc, argv, "hv:w")) != -1) {
+// As we don't have here a valid verbolvl, I leave this debugging statement as comment:
+// printf("### Entering next getopts loop (while), cmdline_arg = %d = %c\n", cmdline_arg, cmdline_arg);
+    	switch (cmdline_arg) {
+		case 'h':                     // Option -h -> Help
+        	printf("Processing Saitek ProFlight Trimwheel axis\n"
+           		"derived from https://github.com/MysteriousJ/Joystick-Input-Examples by Achim Haag\n"
+           		"Allowed commandline parameters:\n"
+           		"-h : this help\n"
+           		"-v <verbosity-level> : debugging\n"
+           		"-w : wait for Saitek Trimwheel axis value <> 0 (else get actual axis value and return\n"
+           		"Retcode: 0 = axis not zero; 1 = axis zero; 8 = no trimwheel (VID &6A3, PID &BD4)\n"
+			);
+        	return 1; // !!! Attention !!! Early return to OS
+        	break;    // Never reached because of return
+		case 'v':                     // Option -v -> Verbosity, must be followed by a number (level of verbosity)
+        	verbosity = optarg;   // variable optarg definition in getopt.h, returned from compiled getopt function
+        	printf("Verbosity set to %s\n", verbosity);
+// Convert verbosity string to integer
+			verbolvl=atoi(verbosity);
+        	printf ("verbosity = %d (from string [%s])\n", verbolvl, verbosity);
+        	if (verbolvl < 1 || verbolvl > 9) {
+          		printf("Verbosity level allowed from 1...9. Bye !\n");
+          		return 8; // !!! Attention !!! Early return to OS
+        		break;    // Never reached because of abort
+        	}
+        	break;  
+      	case 'w':                     // Option --w -> wait for trimwheel axis to become <> 0
+        	printf("Waiting for trimwheel axis to become nonzero\n");
+        	waitfortrimwheel=true;
+        	break;
+      	case '?':                     // Any other commandline parameter error
+        	if (optopt == 'v' || optopt == 'f') {         // optopt: Parameter in error, here -v without following number
+          		fprintf (stderr, "Option -%c requires an argument. Try -h !\n", optopt);
+        	} else if (isprint (optopt)) {    // here we found a parameter not specified in the third getopt argument (string, see above)
+          				fprintf (stderr, "Unknown option `-%c'. Try -h !\n", optopt);
+        			} else {                    // Any other getopt error - exit program
+          				fprintf (stderr, "Unknown option character `\\x%x', try -h ! Bye\n", optopt);
+        			} // endif
+			return 1; // !!! Attention !!! Early return to OS
+        	break;    // Never reached because of return
+      	default:                      // Parameter allowed but not handled - this should not occur
+        	printf("Parameter %c not handled, contact programmer !", cmdline_arg);
+        	abort (); // !!! Attention !!! Early return to OS
+        	break;    // Never reached because of abort
+    	} // end switch
+  	} // end while
+
+	if ( verbolvl > 0 ) {
+    	printf("Unprocessed commmandline parameters (%d parameters):\n", optind);
+    	for (int index = optind; index < argc; index++) printf ("Non-option argument [%s]\n", argv[index]);
+  	}
+
+// ################################################################################### END
+
 // Define joysticks as structure and initialize to zero both subfields (deviceCount, pointer to array of pointers to the specific devinces)
 	Joystruct joysticks = {0};
 
@@ -191,7 +311,7 @@ int main(int argc, char** argv)
 // Now let's start the processing of the "GameInput stream" for a specific controller device,
 // a continuous data stream that consists of every action (buttons, switches, axis) on all filtered devices
 		printf("Starting for-Loop over %i Joystick devices\n", joysticks.deviceCount);
-		for (uint32_t i = 0; i < joysticks.deviceCount; ++i)
+		for (uint32_t devctr = 0; devctr < joysticks.deviceCount; ++devctr)
 		{
 // Define "reading" as instance of class IGameInputReading and capture/process the raw input data...
 // Every input state change received from a device is captured in an IGameInputReading instance. 
@@ -208,17 +328,17 @@ int main(int argc, char** argv)
 // Location: C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared\winerror.h
 // Probably from other (nested) #include
 //
-			if (SUCCEEDED(input->GetCurrentReading(GameInputKindController, joysticks.devices[i], &reading)))
+			if (SUCCEEDED(input->GetCurrentReading(GameInputKindController, joysticks.devices[devctr], &reading)))
 			{
-				printf("--- Processing Joystick %d ---\n", i);
+				printf("--- Processing Joystick %d ---\n", devctr);
 
 // Check device information for actual controller joysticks.devices[i], according to
 // https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputdevice/methods/igameinputdevice_getdeviceinfo
 // https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/structs/gameinputdeviceinfo
 // We have to find the Saitek ProFlight Cessna Trim Wheel (VID: 0x6A3, PID: 0xBD4)
 //					
-				printf("  Now GetDeviceInfo for ctrl %i\n",i);
-				auto joydevinfo = joysticks.devices[i]->GetDeviceInfo();
+				printf("  Now GetDeviceInfo for ctrl %i\n",devctr);
+				auto joydevinfo = joysticks.devices[devctr]->GetDeviceInfo();
 				memsize = joydevinfo->infoSize;
 // Check returned structure at least as big as the first fields we want to process
 				if (memsize >= GmInDevInfoHdr ) {
@@ -235,7 +355,7 @@ int main(int argc, char** argv)
 
 // see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputreading/methods/igameinputreading_getcontrolleraxisstate
 // Capture the axes, switches and buttons of the specific oysticks.devices[i]" controller into our own arrays
-				printf("  Reading axes, switches and buttons for ctrl %i\n",i);
+				printf("  Reading axes, switches and buttons for ctrl %i\n",devctr);
 				reading->GetControllerAxisState(ARRAYSIZE(axes), axes);
 				reading->GetControllerSwitchState(ARRAYSIZE(switches), switches);
 				reading->GetControllerButtonState(ARRAYSIZE(buttons), buttons);
@@ -248,27 +368,27 @@ int main(int argc, char** argv)
 // First the axes
 				if (nbraxes > 0) {
 					printf("  Axes - ");
-					for (uint32_t i = 0; i < nbraxes; ++i) {
-						printf("%d:%f ", i, axes[i]);
-					}
+					for (uint32_t axctr = 0; axctr < nbraxes; ++axctr) {
+						printf("%d:%f ", axctr, axes[axctr]);
+					} // end for axctr loop
 				} else {
 					printf (" No Axes ");
 				}
 // Second the switches
 				if (nbrswch > 0) {
 					printf("Switches - ");
-					for (uint32_t i = 0; i < nbrswch; ++i) {
-						printf("%d:%d ", i, switches[i]);
-					}
+					for (uint32_t swctr = 0; swctr < nbrswch; ++swctr) {
+						printf("%d:%d ", swctr, switches[swctr]);
+					} // end for swctr loop
 				} else {
 					printf (" No Swi  ");
 				}
 // Third the buttons
 				if (nbrbutt > 0) {
 					printf("Buttons - ");
-					for (uint32_t i = 0; i < nbrbutt; ++i) {
-						if (buttons[i]) printf("%d ", i);
-					}
+					for (uint32_t btctr = 0; btctr < nbrbutt; ++btctr) {
+						if (buttons[btctr]) printf("%d ", btctr);
+					} // end for btctr loop
 				} else {
 					printf (" No Buttn");
 				}
@@ -279,8 +399,34 @@ int main(int argc, char** argv)
 			} else {
 				printf("Nix Joystick found\n");
 			}
+		} // end for devctr loop
+
+// exit whilectr loop if "wait" parameter not specified
+		if ( ! waitfortrimwheel ) {
+			printf("und tschuess...\n");
+			break; // exit whilectr loop
 		}
+// exit whilectr loop if key "x" pressed
+		bool exitkeyflag = false;
+		while ( _kbhit() ) { // as long as there are keycodes in the input buffer
+			int keypressed = _getch();
+			keypressed = toupper(keypressed);
+			printf("Taste gedrueckt: %c\n", keypressed);
+			if (keypressed == 'Q') {
+				exitkeyflag = true;
+				printf("Exit-Key %c gedrueckt\n",keypressed);
+			} else {
+				printf("isse aber nix Exit-Key !\n");
+			}
+		}
+		if (exitkeyflag) {
+			printf("Exit-Key -> und tschuess...\n");
+			break; // exit whilectr loop 
+		}
+
 // Wait a short moment, just not to overload our system
 		Sleep(waitmsec); // Wait 500 msecs
-	}
+	} // end for whilecounter loop
+printf("End program\n") ;
+
 }

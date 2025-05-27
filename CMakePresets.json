@@ -3,7 +3,7 @@
     "configurePresets": [
         {
             "name": "Win10_MSVC-17-2022-x64-Base",
-            "displayName": "Visual Studio Community 2022 Base - amd64",
+            "displayName": "Visual Studio Community 2022 Base Conf - amd64",
             "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
             "generator": "Visual Studio 17 2022",
             "toolset": "host=x64",
@@ -16,7 +16,7 @@
         },
         {
             "name": "Win10_MSVC-17-2022-x64-Debug",
-            "displayName": "Visual Studio Community 2022 Debug - amd64",
+            "displayName": "Visual Studio Community 2022 Debug Conf - amd64",
             "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
 			"inherits": [ "Win10_MSVC-17-2022-x64-Base" ],
             "binaryDir": "${sourceDir}/out/build/${presetName}",
@@ -26,7 +26,7 @@
         },
         {
             "name": "Win10_MSVC-17-2022-x64-Release",
-            "displayName": "Visual Studio Community 2022 Release - amd64",
+            "displayName": "Visual Studio Community 2022 Release Conf - amd64",
             "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
 			"inherits": [ "Win10_MSVC-17-2022-x64-Base" ],
             "binaryDir": "${sourceDir}/out/build/${presetName}",
@@ -38,13 +38,13 @@
     "buildPresets": [
         {
             "name": "Win10_MSVC-17-2022-x64-build-debug",
-            "displayName": "Visual Studio Community 2022 Build Debug - amd64",
+            "displayName": "Visual Studio Community 2022 Debug Build - amd64",
             "configurePreset": "Win10_MSVC-17-2022-x64-Debug",
             "configuration": "Debug"
         },
         {
             "name": "Win10_MSVC-17-2022-x64-build-release",
-            "displayName": "Visual Studio Community 2022 Build Release - amd64",
+            "displayName": "Visual Studio Community 2022 Release Build - amd64",
             "configurePreset": "Win10_MSVC-17-2022-x64-Release",
             "configuration": "Release"
         }
