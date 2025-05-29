@@ -77,7 +77,11 @@ int memsize, vid, pid, rev, ifc, col = 0;
 int nbraxes, nbrswch, nbrbutt = 0;
 
 // Default: no verbosity
-static int verbolvl = 0;         
+static int verbolvl = 0;
+// Definition of exit key
+static const int exitkey = 'Q';
+//
+int keypressed = 0;
 
 // #############################################################################################################
 // Start of asynchronous subroutine
@@ -94,7 +98,9 @@ static int verbolvl = 0;
 // therefore it runs
 void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* context, IGameInputDevice* device, uint64_t timestamp, GameInputDeviceStatus currentStatus, GameInputDeviceStatus previousStatus) 
 { 
-	printf("## callback: routine starting (async)\n");
+	if ( verbolvl > 0 ) {
+		printf("\t#DBG %s@%d ### callback sub: routine starting (async)\n", __func__, __LINE__);
+	}
 // Access our current "joysticks" array (of controllers)
 	Joystruct* joysticks = (Joystruct*)context;
 // currentStatus :
@@ -110,9 +116,13 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 		for (uint32_t devctrnew = 0; devctrnew < joysticks->deviceCount; ++devctrnew)
 		{
 // Check if the new contoller device is already in our list of controllers, if so, do nothing and return to caller
-			printf("## callback: checking device %i", devctrnew);
+			if ( verbolvl > 0 ) {
+				printf("\t#DBG %s@%d ### callback sub: checking device %i\n", __func__, __LINE__, devctrnew);
+			}
 			if (joysticks->devices[devctrnew] == device) {
-				printf("## callback: routine leaving, joystick unchanged");
+				if ( verbolvl > 0 ) {
+					printf("\t#DBG %s@%d ### callback sub: routine leaving, joystick unchanged %i\n", __func__, __LINE__, devctrnew);
+				}
 				return;
 			}
 		}
@@ -120,7 +130,9 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 
 // add 1 to number of controllers
 		++joysticks->deviceCount;
-		printf("## callback: Joystick %i added\n",joysticks->deviceCount);
+		if ( verbolvl > 0 ) {
+			printf("\t#DBG %s@%d ### callback sub: Joystick %i added\n", __func__, __LINE__,joysticks->deviceCount);
+		}
 // now realloc (resize) our list of controllers (add memory for the new controller)
 		joysticks->devices = (IGameInputDevice**)realloc(joysticks->devices, joysticks->deviceCount * sizeof(IGameInputDevice*));
 // move new device definition to new element of controller array
@@ -128,6 +140,9 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 		joysticks->devices[joysticks->deviceCount-1] = device;
 	}
 	printf("## callback: routine leaving\n");
+	if ( verbolvl > 0 ) {
+		printf("\t#DBG %s@%d ### callback sub: routine leaving\n", __func__, __LINE__);
+	}
 } 
 
 // #############################################################################################################
@@ -157,7 +172,9 @@ int main(int argc, char** argv)
 		  argv[0], __DATE__, __TIME__, COMP_TYP, COMP_VER);
 
 // Now let us start the application
-	printf("Starting main()\n");
+ 	if ( verbolvl > 0 ) {
+    	printf("\t#DBG %s@%d # Starting main()\n", __func__, __LINE__);
+  	}	
 
 // Process option parameters from commandline
 // ################################################################################ ANF
@@ -168,8 +185,9 @@ int main(int argc, char** argv)
   or https://www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html (the sample I used here)
   The "main" function has to be defined with arguments "(int argc, char** argv)" (char** is a pointer to a pointer list)
 */
-	printf("Process commandline parameters by getopt.c\n");
-	char *verbosity = NULL;   // Parameter "-v <number>", number = 1 : lowest verbosity
+ 	if ( verbolvl > 0 ) {
+    	printf("\t#DBG %s@%d # Process commandline parameters by getopt.c\n", __func__, __LINE__);
+  	}	
 	bool waitfortrimwheel = false;   // Parameter "-w : wait fo trimwheel axis to become nonzero
 	bool cheatword = false;   // Parameter "-c" : show each word to guess in advance
 
@@ -187,9 +205,9 @@ int main(int argc, char** argv)
 // char* optarg in getopt.h   set by getopt.c to the option value behind the processed commandline parameter (e.g. "1" for "-v 1")
 
 /* Now parse the given-to-main commandline parameters */
-/* Implemented: "-h" = help; "-v <number>" = verbosity with level (1=lowest); -f = fixed random generator value (NULL)*/
+/* Implemented: "-h" = help; "-v" = verbosity (lvl increased by multiple occurences); -w = wait up to one day or user abort*/
 /* The colon after an option requests a value behind an option character */
-	while ((cmdline_arg = getopt (argc, argv, "hv:w")) != -1) {
+	while ((cmdline_arg = getopt (argc, argv, "hvw")) != -1) {
 // As we don't have here a valid verbolvl, I leave this debugging statement as comment:
 // printf("### Entering next getopts loop (while), cmdline_arg = %d = %c\n", cmdline_arg, cmdline_arg);
     	switch (cmdline_arg) {
@@ -198,22 +216,16 @@ int main(int argc, char** argv)
            		"derived from https://github.com/MysteriousJ/Joystick-Input-Examples by Achim Haag\n"
            		"Allowed commandline parameters:\n"
            		"-h : this help\n"
-           		"-v <verbosity-level> : debugging\n"
+           		"-v : debugging msgs, level increased by multiple occurences\n"
            		"-w : wait for Saitek Trimwheel axis value <> 0 (else get actual axis value and return\n"
            		"Retcode: 0 = axis not zero; 1 = axis zero; 8 = no trimwheel (VID &6A3, PID &BD4)\n"
 			);
         	return 1; // !!! Attention !!! Early return to OS
         	break;    // Never reached because of return
-		case 'v':                     // Option -v -> Verbosity, must be followed by a number (level of verbosity)
-        	verbosity = optarg;   // variable optarg definition in getopt.h, returned from compiled getopt function
-        	printf("Verbosity set to %s\n", verbosity);
-// Convert verbosity string to integer
-			verbolvl=atoi(verbosity);
-        	printf ("verbosity = %d (from string [%s])\n", verbolvl, verbosity);
-        	if (verbolvl < 1 || verbolvl > 9) {
-          		printf("Verbosity level allowed from 1...9. Bye !\n");
-          		return 8; // !!! Attention !!! Early return to OS
-        		break;    // Never reached because of abort
+		case 'v':                     // Option -v -> Verbosity, each occurence increases verbosity by 1 up to max. 9)
+        	if (verbolvl < 9) {
+        		verbolvl = ++verbolvl;   // variable optarg definition in getopt.h, returned from compiled getopt function
+        		printf("Verbosity increased to %i\n", verbolvl);
         	}
         	break;  
       	case 'w':                     // Option --w -> wait for trimwheel axis to become <> 0
@@ -222,11 +234,11 @@ int main(int argc, char** argv)
         	break;
       	case '?':                     // Any other commandline parameter error
         	if (optopt == 'v' || optopt == 'f') {         // optopt: Parameter in error, here -v without following number
-          		fprintf (stderr, "Option -%c requires an argument. Try -h !\n", optopt);
+          		fprintf(stderr, "Option -%c requires an argument. Try -h !\n", optopt);
         	} else if (isprint (optopt)) {    // here we found a parameter not specified in the third getopt argument (string, see above)
-          				fprintf (stderr, "Unknown option `-%c'. Try -h !\n", optopt);
+          				fprintf(stderr, "Unknown option `-%c'. Try -h !\n", optopt);
         			} else {                    // Any other getopt error - exit program
-          				fprintf (stderr, "Unknown option character `\\x%x', try -h ! Bye\n", optopt);
+          				fprintf(stderr, "Unknown option character `\\x%x', try -h ! Bye\n", optopt);
         			} // endif
 			return 1; // !!! Attention !!! Early return to OS
         	break;    // Never reached because of return
@@ -276,7 +288,10 @@ int main(int argc, char** argv)
 // - relevant information for callback function - give the address of our "joysticks pointer to pointer array" to the async subroutine
 // - name of asynch subroutine: deviceChangeCallback (subroutine defined above)
 // - token identifying the registered callback function (if we have to cancel or unregister this callback function)
-	printf("Registering async callback procedure\n");
+
+	if ( verbolvl > 0 ) {
+		printf("\t#DBG %s@%d Registering async callback procedure\n", __func__, __LINE__);
+	}
 	input->RegisterDeviceCallback(0, GameInputKindController, GameInputDeviceAnyStatus, GameInputBlockingEnumeration, &joysticks, deviceChangeCallback, &callbackId);
 
 // Define array of one controllers buttons as up to 64 button states
@@ -289,13 +304,19 @@ int main(int argc, char** argv)
 // Define array of one controllers axes as up to 64 axes floating point values
 	float axes[64];
 
-// Loop (nearly) endless
-	printf("Starting while-Loop for up to %i cycles with sleep %i msecs\n", waitloops,waitmsec);
-	printf("Press Ctrl-C to interrupt if you don't like to run it a whole day ;-)\n");
+// If wait-flag specified: loop (nearly) endless
+	if ( waitfortrimwheel ) {
+		printf("Starting while-Loop for up to %i cycles with sleep %i msecs\n", waitloops,waitmsec);
+		printf("Press exit-key '%c' to interrupt if you don't like to run it a whole day ;-)\n", exitkey);
+	}
 	// Now start query cycles up to a whole day	
 	for (int whilecounter = 1 ; whilecounter < waitloops ; whilecounter++)
 	{
-		printf("\n*** while-Cycle %i ***\n", whilecounter);
+		if ( verbolvl > 0 ) {
+			printf("\t#DBG %s@%d \n*** while-Cycle %i ***\n", __func__, __LINE__, whilecounter);
+		} else if ( waitfortrimwheel ) {
+			printf("*** while-Cycle %i , exit='%c' ***\n", whilecounter, exitkey);
+		}
 // Object instance "dispatcher" is of class IGameInputDispatcher, declaration see above
 // According to https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/IGameInputDispatcher/methods/igameinputdispatcher_dispatch
 // the dispatcher executes for at least one queue item, even if the quota is set to zero (as here)
@@ -306,11 +327,14 @@ int main(int argc, char** argv)
 // Return value: true if work items are pending in the dispatcher's queue, false if no work items remain
 // Returns at the time that the queue is flushed
 		bool dispretc = dispatcher->Dispatch(0);
-		printf("GameInput dispatcher work to do: %s\n", dispretc ? "yes" : "no");
-
+		if ( verbolvl > 0 ) {
+			printf("\t#DBG %s@%d GameInput dispatcher work to do: %s\n", __func__, __LINE__, dispretc ? "yes" : "no");
+		}
 // Now let's start the processing of the "GameInput stream" for a specific controller device,
 // a continuous data stream that consists of every action (buttons, switches, axis) on all filtered devices
-		printf("Starting for-Loop over %i Joystick devices\n", joysticks.deviceCount);
+		if ( verbolvl > 0 ) {
+			printf("\t#DBG %s@%d Starting for-Loop over %i Joystick devices\n", __func__, __LINE__, joysticks.deviceCount);
+		}
 		for (uint32_t devctr = 0; devctr < joysticks.deviceCount; ++devctr)
 		{
 // Define "reading" as instance of class IGameInputReading and capture/process the raw input data...
@@ -337,25 +361,39 @@ int main(int argc, char** argv)
 // https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/structs/gameinputdeviceinfo
 // We have to find the Saitek ProFlight Cessna Trim Wheel (VID: 0x6A3, PID: 0xBD4)
 //					
-				printf("  Now GetDeviceInfo for ctrl %i\n",devctr);
+				if ( verbolvl > 0 ) {
+					printf("\t#DBG %s@%d Now GetDeviceInfo for ctrl %i\n", __func__, __LINE__, devctr);
+				}
 				auto joydevinfo = joysticks.devices[devctr]->GetDeviceInfo();
 				memsize = joydevinfo->infoSize;
 // Check returned structure at least as big as the first fields we want to process
 				if (memsize >= GmInDevInfoHdr ) {
-					printf ("  structure length (%i vs. prefix min: %i)\n", memsize, GmInDevInfoHdr);
+					if ( verbolvl > 0 ) {
+						printf("\t#DBG %s@%d structure length (%i vs. prefix min: %i)\n", __func__, __LINE__, memsize, GmInDevInfoHdr);
+					}
 					vid = joydevinfo->vendorId;
 					pid = joydevinfo->productId;
 					rev = joydevinfo->revisionNumber;
 					ifc = joydevinfo->interfaceNumber;
 					col = joydevinfo->collectionNumber;
-					printf ("  InfoSize: %i, VID: %#04x, PID: %#04x, REV: %#04x, IFC: %#04x, COL: %#04x\n", memsize, vid, pid, rev, ifc, col);
+					if ( verbolvl > 0 ) {
+						printf("\t#DBG %s@%d InfoSize: %i, VID: %#04x, PID: %#04x, REV: %#04x, IFC: %#04x, COL: %#04x\n", __func__, __LINE__, 
+								memsize, vid, pid, rev, ifc, col);
+					}
 				} else {
-					printf ("GetDeviceInfo() return structure length too short (%i vs. prefix min: %i)\n", memsize, GmInDevInfoHdr);
+					if ( verbolvl > 0 ) {
+						printf("\t#DBG %s@%d GetDeviceInfo() return structure length too short (%i vs. prefix min: %i)\n", __func__, __LINE__, 
+								memsize, GmInDevInfoHdr);
+					}
+					printf("Cannot get information for ctrl %i)\n", devctr);
 				}
 
 // see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputreading/methods/igameinputreading_getcontrolleraxisstate
 // Capture the axes, switches and buttons of the specific oysticks.devices[i]" controller into our own arrays
-				printf("  Reading axes, switches and buttons for ctrl %i\n",devctr);
+				if ( verbolvl > 0 ) {
+					printf("\t#DBG %s@%d Reading axes, switches and buttons for ctrl %i\n", __func__, __LINE__, devctr);
+				}
+				printf("Controller %i : ", devctr);
 				reading->GetControllerAxisState(ARRAYSIZE(axes), axes);
 				reading->GetControllerSwitchState(ARRAYSIZE(switches), switches);
 				reading->GetControllerButtonState(ARRAYSIZE(buttons), buttons);
@@ -403,24 +441,27 @@ int main(int argc, char** argv)
 
 // exit whilectr loop if "wait" parameter not specified
 		if ( ! waitfortrimwheel ) {
-			printf("und tschuess...\n");
+			if ( verbolvl > 0 ) {
+				printf("\t#DBG %s@%d Leaving whilectr loop for no-wait-parm\n", __func__, __LINE__);
+			}
 			break; // exit whilectr loop
 		}
-// exit whilectr loop if key "x" pressed
+// exit whilectr loop if exit key pressed
 		bool exitkeyflag = false;
 		while ( _kbhit() ) { // as long as there are keycodes in the input buffer
-			int keypressed = _getch();
-			keypressed = toupper(keypressed);
-			printf("Taste gedrueckt: %c\n", keypressed);
-			if (keypressed == 'Q') {
+			keypressed = toupper(_getch());
+			if ( verbolvl > 0 ) {
+				printf("\t#DBG %s@%d Key pressed: %i = '%c'\n", __func__, __LINE__, keypressed, keypressed);
+			}
+			if (keypressed == exitkey) {
 				exitkeyflag = true;
-				printf("Exit-Key %c gedrueckt\n",keypressed);
-			} else {
-				printf("isse aber nix Exit-Key !\n");
+				printf("Exit-key '%c' detected, stopping loop\n",keypressed);
 			}
 		}
 		if (exitkeyflag) {
-			printf("Exit-Key -> und tschuess...\n");
+			if ( verbolvl > 0 ) {
+				printf("\t#DBG %s@%d leaving whilectr loop for exit-key\n", __func__, __LINE__, keypressed, keypressed);
+			}
 			break; // exit whilectr loop 
 		}
 
