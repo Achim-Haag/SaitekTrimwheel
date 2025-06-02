@@ -4,6 +4,24 @@
 	in this case (axis value = 0), the wheel has to be turned some revolutions.
 	So this Program should detect the state of the trimwheel's axis and set a corresponding return code
 
+	Parameters:
+	-h : help
+	-v : verbose, print additional msgs
+	-s : silent, suppress while-cycle message written on each cycle loop
+	-c : cycle until ~24h or user quits with "Q" or Saitek Trimwheel axis <> 0 (Trimwheel has been turned)
+
+	Return codes:
+	* Trimwheel is not zero : RC=0
+	* Trimwheel is zero : RC=1
+	* Call with -h : RC=4
+	* Error in processing: RC=12
+	* No trimwheel detected or default exit: RC=16
+
+	Notes
+	* Without wait flag (-w), all controllers are checked once
+	  In case the trimwheel is found, its state determines the return code
+	* With wait flag (-w), the last known state of the trimwheel determines the return code
+
 	Modifications:
 	13.05.25/AH derived from https://github.com/MysteriousJ/Joystick-Input-Examples
 		copy of content of "gameinput.cpp"
@@ -70,6 +88,18 @@ const int GmInDevInfoHdr = sizeof(GameInputDeviceInfo().infoSize) +
 const int waitmsec = 500 ;
 const int waitloops = 86400 * 1000 / waitmsec ;
 
+
+// Saitek Proflight Trimwheel Vendor-ID (VID) and Product-ID (PID)
+const int saitektwvid = 0x6a3;
+const int saitektwpid = 0xbd4;
+
+// Do we have Saitek Trimwheel attached ?
+static bool saitektwfound = false;
+// Return state of Saitek Trimwheel to caller of main (should be set explicitly, else 99)
+// If we find a Saitek Trimwheel, we return 0 (axis not zero) or 1 (axis is zero) to OS
+// Any other return to OS sets a returncode 4 or higher
+static int  osretcode = 16; // Default if not set otherwise is return code 16 to OS
+
 // Variables for processing GameInputDeviceInfo structure
 int memsize, vid, pid, rev, ifc, col = 0;
 
@@ -78,9 +108,10 @@ int nbraxes, nbrswch, nbrbutt = 0;
 
 // Default: no verbosity
 static int verbolvl = 0;
-// Definition of exit key
+// while-cycle message suppression
+bool whcyclemsg = true;
+// Definition of exit key. temp stor for the user-pressed key
 static const int exitkey = 'Q';
-//
 int keypressed = 0;
 
 // #############################################################################################################
@@ -205,9 +236,9 @@ int main(int argc, char** argv)
 // char* optarg in getopt.h   set by getopt.c to the option value behind the processed commandline parameter (e.g. "1" for "-v 1")
 
 /* Now parse the given-to-main commandline parameters */
-/* Implemented: "-h" = help; "-v" = verbosity (lvl increased by multiple occurences); -w = wait up to one day or user abort*/
+/* Implemented: "-h" = help; "-v" = verbosity (lvl increased by multiple occurences); -c = cycle until ~24h or user quits (Q) or trimwheel axis <> 0*/
 /* The colon after an option requests a value behind an option character */
-	while ((cmdline_arg = getopt (argc, argv, "hvw")) != -1) {
+	while ((cmdline_arg = getopt (argc, argv, "hvsw")) != -1) {
 // As we don't have here a valid verbolvl, I leave this debugging statement as comment:
 // printf("### Entering next getopts loop (while), cmdline_arg = %d = %c\n", cmdline_arg, cmdline_arg);
     	switch (cmdline_arg) {
@@ -217,10 +248,12 @@ int main(int argc, char** argv)
            		"Allowed commandline parameters:\n"
            		"-h : this help\n"
            		"-v : debugging msgs, level increased by multiple occurences\n"
-           		"-w : wait for Saitek Trimwheel axis value <> 0 (else get actual axis value and return\n"
-           		"Retcode: 0 = axis not zero; 1 = axis zero; 8 = no trimwheel (VID &6A3, PID &BD4)\n"
+           		"-s : silent loop, don't write 'while-cycle' message\n"
+           		"-c : continuous cycle until Saitek Trimwheel axis value <> 0 (else get actual axis value and return\n"
+           		"Retcode: 0 = axis not zero; 1 = axis zero; 8 = no trimwheel (VID &6A3, PID &BD4), 16 = errors\n"
 			);
-        	return 1; // !!! Attention !!! Early return to OS
+			osretcode = 4;
+        	return osretcode; // !!! Attention !!! Early return to OS
         	break;    // Never reached because of return
 		case 'v':                     // Option -v -> Verbosity, each occurence increases verbosity by 1 up to max. 9)
         	if (verbolvl < 9) {
@@ -228,8 +261,12 @@ int main(int argc, char** argv)
         		printf("Verbosity increased to %i\n", verbolvl);
         	}
         	break;  
-      	case 'w':                     // Option --w -> wait for trimwheel axis to become <> 0
-        	printf("Waiting for trimwheel axis to become nonzero\n");
+      	case 's':                     // Option --w -> wait for trimwheel axis to become <> 0
+        	printf("Suppression of 'while-cycle...' message\n");
+        	whcyclemsg=false;
+        	break;
+      	case 'c':                     // Option --w -> wait for trimwheel axis to become <> 0
+        	printf("Cycle while trimwheel axis is zero\n");
         	waitfortrimwheel=true;
         	break;
       	case '?':                     // Any other commandline parameter error
@@ -240,11 +277,13 @@ int main(int argc, char** argv)
         			} else {                    // Any other getopt error - exit program
           				fprintf(stderr, "Unknown option character `\\x%x', try -h ! Bye\n", optopt);
         			} // endif
-			return 1; // !!! Attention !!! Early return to OS
+			osretcode = 12;
+			return osretcode; // !!! Attention !!! Early return to OS
         	break;    // Never reached because of return
       	default:                      // Parameter allowed but not handled - this should not occur
         	printf("Parameter %c not handled, contact programmer !", cmdline_arg);
-        	abort (); // !!! Attention !!! Early return to OS
+			osretcode = 12;
+			return osretcode; // !!! Attention !!! Early return to OS
         	break;    // Never reached because of abort
     	} // end switch
   	} // end while
@@ -314,7 +353,7 @@ int main(int argc, char** argv)
 	{
 		if ( verbolvl > 0 ) {
 			printf("\t#DBG %s@%d \n*** while-Cycle %i ***\n", __func__, __LINE__, whilecounter);
-		} else if ( waitfortrimwheel ) {
+		} else if ( waitfortrimwheel && whcyclemsg ) {
 			printf("*** while-Cycle %i , exit='%c' ***\n", whilecounter, exitkey);
 		}
 // Object instance "dispatcher" is of class IGameInputDispatcher, declaration see above
@@ -382,7 +421,7 @@ int main(int argc, char** argv)
 					}
 				} else {
 					if ( verbolvl > 0 ) {
-						printf("\t#DBG %s@%d GetDeviceInfo() return structure length too short (%i vs. prefix min: %i)\n", __func__, __LINE__, 
+						printf("\t#DBG %s@%d GetDeviceInfo() gives structure too short in length (%i vs. prefix min: %i)\n", __func__, __LINE__, 
 								memsize, GmInDevInfoHdr);
 					}
 					printf("Cannot get information for ctrl %i)\n", devctr);
@@ -434,6 +473,23 @@ int main(int argc, char** argv)
 				puts("");
 // Release the instance "reading" of class IGameInputReading used for this cycle
 				reading->Release();
+// Now processing the Saitek Trimwheel if found: has only axes[0]
+				if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
+					if ( verbolvl > 0 ) {
+						printf("Saitek Trimwheel found, VID: %#04x, PID: %#04x, axis: %f", vid, pid, axes[0]);
+					}
+					saitektwfound = true ;
+					if ( axes[0] != 0 ) {
+						osretcode = 0;		// Trimwheel axis 0 not equal 0 : wheel is initialized
+					} else {
+						osretcode = 1;		// Trimwheel axis 0 equal 0 : uncertain about wheel initialized
+					}
+				}
+
+// const int saitektwvid = 0x6a3;
+// const int saitektwpid = 0xbd4;
+
+
 			} else {
 				printf("Nix Joystick found\n");
 			}
@@ -468,6 +524,6 @@ int main(int argc, char** argv)
 // Wait a short moment, just not to overload our system
 		Sleep(waitmsec); // Wait 500 msecs
 	} // end for whilecounter loop
-printf("End program\n") ;
-
-}
+	printf("End program, RC=%i\n", osretcode) ;
+	return osretcode;
+} // end main

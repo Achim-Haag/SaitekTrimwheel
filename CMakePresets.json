@@ -3,6 +3,7 @@
     "configurePresets": [
         {
             "name": "Win10_MSVC-17-2022-x64-Base",
+            "hidden": true,
             "displayName": "Visual Studio Community 2022 Base Conf - amd64",
             "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
             "generator": "Visual Studio 17 2022",
