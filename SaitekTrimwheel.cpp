@@ -549,7 +549,7 @@ int main(int argc, char** argv)
 						} else {
 						printf (" No Axes ");
 						}
-	// Second the switches
+// Second the switches
 						if (nbrswch > 0) {
 							printf("Switches - ");
 							for (uint32_t swctr = 0; swctr < nbrswch; ++swctr) {
