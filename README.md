@@ -1,22 +1,34 @@
 # SaitekTrimwheel - Saitek Pro Flight Trimwheel initialization checking
 
-## Background and Problem
+## Background
 
-The Saitek Pro Flight Trimwheel is a USB controller with a single axis and no buttons or switches
-to be used in flight simulators as a trimwheel.
+The Saitek Pro Flight Trimwheel is a USB controller with a single axis and no buttons or switches,
+this axis is used in flight simulators as a [trim wheel](https://pilotinstitute.com/aircraft-trim-explained/).
 
-This device has an implementation bug regarding its configuration at boot time:
-__If this wheel isn't plugged after Windows has started, it is present but the axis doesn't change__
+## Problem
+
+This USB device has an implementation bug regarding its configuration at boot time:
+> [IMPORTANT]
+> __If this wheel isn't plugged after Windows has started, but plugged in before, it is present but the axis doesn't change__.
 
 ## Solution
 
-If the problem occurs, the wheel has to be manually turned around some revolutions, best in both directions.
-This seem to initialize the wheel's internal logic, so Windows detects its axis.
+As it happens on nearly every reboot, the wheel has to be __manually turned around some revolutions__, best in both directions after Windows is up and running.
+This seem to re-initialize the wheel's internal logic, sometimes changing its bus number, from then, its axis values are reported back to Windows.
 
-But: sometimes the wheel's axis starts to work after boot without turning, so it's not necessary to turn the wheel.
+But: sometimes the wheel's axis starts to work after boot without manual turning, so it's not necessary to turn the wheel.
 
-The only possibility to check the status of the wheel and its axis was to check the axis in the Windows "Devices and Printers",
-a complicated way not convenient on each Windows startup.
+The only possibility to check the correct status of the wheel and its axis was to check the axis in the Windows "Devices and Printers",
+a complicated way not convenient on each Windows startup. As a workaround, I checked the device's bus number change (after turning) in my script by
+```
+powershell.exe %pwsp% -Command "$busnbr=Get-PnpDeviceProperty -InstanceId '%mytrimwh%' -Keyname 'DEVPKEY_Device_BusNumber' | select -ExpandProperty data; exit $busnbr"
+set busno=%ERRORLEVEL%
+set busnoinit=%busno%
+if %busno% EQU %busnoinit% if %busno% LEQ %busnomin% goto asktrimwheel
+```
+But sometimes, the bus number isn't changed after the wheel-turning re-initialization
+
+So I decided to check the change of the axis value directly by a program.
 
 ## Helper program against Microsoft GameInput API V.0
 
