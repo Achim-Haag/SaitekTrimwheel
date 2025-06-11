@@ -88,13 +88,14 @@ for me, unexperienced in C++.
 * Hard to find only gameinput.lib and gameinput.h as they were part of a big package in
   https://www.nuget.org/packages/Microsoft.GameInput, but finally I found it by extracting with 7zip
   the folder "native" from _microsoft.gameinput.1.2.26100.4782.nupkg_ with the GameInput V.1 API:
-	-> native\include\GameInput.h
-	-> native\lib\x64\GameInput.lib
+  ```
+  native\include\GameInput.h
+  native\lib\x64\GameInput.lib
+  ```
 * GetDeviceInfo switched from assignment to parameter (as a non-C++ programmer, after long time, I found out)
 * Crash when calling the GameInput's dispatcher
 
-So I stopped the conversion and continued to use the V.0 gameinput.lib and src/gameinput.h I found here:
-https://github.com/MysteriousJ/Joystick-Input-Examples/tree/main
+So I dropped the conversion to API V.1 and continued to use the same V.0 gameinput.lib and its corresponding src/gameinput.h as the originating gameinput.cpp uses, found in https://github.com/MysteriousJ/Joystick-Input-Examples/tree/main
 
 ### CMake Release vs. Debug
 

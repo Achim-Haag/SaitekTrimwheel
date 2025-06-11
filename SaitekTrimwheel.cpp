@@ -41,7 +41,10 @@
 		copy of content of "gameinput.cpp"
 	27.05.25/AH after commenting and modifying the source to understand its function
 		and to get deeper in Microsoft Windows GameInput API, now changing for my needs.
-	04.06.25/AH final state
+	04.06.25/AH several programming, first final state
+	08.06.25/AH further improvement
+		- cycle message : added number of loops
+		- 
 	
 */
 
@@ -93,15 +96,19 @@ struct Joystruct
 	IGameInputDevice** devices;
 };
 
-// Structure"GameInputDeviceInfo" (GameInput.h) minimum size (first fields we process) for device attribute structure 
-const int GmInDevInfoHdr = sizeof(GameInputDeviceInfo().infoSize) + 
-	sizeof(GameInputDeviceInfo().vendorId) + sizeof(GameInputDeviceInfo().productId) + 
-	sizeof(GameInputDeviceInfo().revisionNumber) + sizeof(GameInputDeviceInfo().interfaceNumber) +
-	sizeof(GameInputDeviceInfo().collectionNumber);
+// #############################################################################################################
+// Global variables, mostly static
+// #############################################################################################################
+
+// Size of Structure"GameInputDeviceInfo" (GameInput.h) with device attribute structure 
+static const int GmInpDevInfSize = sizeof(GameInputDeviceInfo);
+// Allocate pointer to structure joydevinfo of type GameInputDeviceInfo to receive address of device data block from GetDeviceInfo()
+// Has to be const as the device data block is owned by IGameInput object and must not be modified by application
+static const GameInputDeviceInfo *joydevinfo;
 
 // Saitek Proflight Trimwheel Vendor-ID (VID) and Product-ID (PID)
-const int saitektwvid = 0x6a3;
-const int saitektwpid = 0xbd4;
+static const int saitektwvid = 0x6a3;
+static const int saitektwpid = 0xbd4;
 
 // Do we have Saitek Trimwheel attached ?
 static bool saitektwfound = false;
@@ -113,27 +120,27 @@ static bool saitektwturned = false;
 static int osretcode = 16; // Default if not set otherwise is return code 16 to OS
 
 // Default readloops 86.400 (one day's seconds)
-const int readldflt = (24*60*60);
+static const int readldflt = (24*60*60);
 
 // To check function results by SUCCEEDED()
 HRESULT retresult;
 
 // Variables for processing GameInputDeviceInfo structure
-int memsize, vid, pid, rev, ifc, col = 0;
+static int memsize, vid, pid, rev, ifc, col = 0;
 
 // Variables for processing axes, switches, buttons
-int nbraxes, nbrswch, nbrbutt = 0;
+static int nbraxes, nbrswch, nbrbutt = 0;
 
 // Default: no verbosity
 static int verbolvl = 0;
 // while-cycle message suppression, default: messages supressed
-bool cyclemessages=true;
+static bool cyclemessages=true;
 // Get axes, switches, buttons not only from Saitek Trimwheel but all controllers
-bool allcontrollers=false;
+static bool allcontrollers=false;
 
 // Definition of exit key. temp stor for the user-pressed key
 static const int exitkey = 'Q';
-int keypressed = 0;
+static int keypressed = 0;
 
 // #############################################################################################################
 // Start of asynchronous subroutine
@@ -158,6 +165,9 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 { 
 	if ( verbolvl > 0 ) {
 		printf("\t#DBG1 %s@%d ### callbk sub: routine starting (async)\n", __func__, __LINE__);
+	}
+	if (cyclemessages) {
+		printf("Device state change detected, will be processed\n");
 	}
 // Access our current "joysticks" array (of controllers) and set function-local (!) pointer 'joysticks' to main-routine's 'joysticks' pointer
 	Joystruct* joysticks = (Joystruct*)context;
@@ -238,10 +248,11 @@ int main(int argc, char** argv)
     	printf("\t#DBG1 %s@%d # Starting main()\n", __func__, __LINE__);
   	}	
 
-// Process option parameters from commandline
-// ################################################################################ ANF
+// #############################################################################################################
+// Process commandline options
+// #############################################################################################################
 /*
-  Process commandline parameters with Windows-specific getopt.c
+  Process commandline parameters  (argc = count, argv = pointer array) with Windows-specific getopt.c
   getopt is a well-known function in the Unix environment and shells to parse argument lists,
   see https://en.wikipedia.org/wiki/Getopt 
   or https://www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html (the sample I used here)
@@ -277,7 +288,7 @@ int main(int argc, char** argv)
 // printf("### Entering next getopts loop (while), cmdline_arg = %d = %c\n", cmdline_arg, cmdline_arg);
     	switch (cmdline_arg) {
 		case 'h':                     // Option -h -> Help
-        	printf("Processing Saitek ProFlight Trimwheel (VID &6A3, PID &BD4) axis\n"
+        	printf("Processing Saitek ProFlight Trimwheel (VID %04X, PID %04X) axis\n"
            		"derived from https://github.com/MysteriousJ/Joystick-Input-Examples by Achim Haag\n"
            		"Allowed commandline parameters:\n"
            		"-h : this help\n"
@@ -286,7 +297,7 @@ int main(int argc, char** argv)
            		"-c <###>: cycle for ### seconds (otherwise default: %i) until exit key %c pressed\n"
 				"-a : process all controllers (axis, switches, buttons), not only trimwheel\n"
            		"Retcode: 0 = axis not zero (OK); 1 = axis zero; 4 = help ; 8 = parameter error, >8  = other errors\n",
-				waitmsec, waitmsvb, readldflt, exitkey
+				saitektwvid, saitektwpid, waitmsec, waitmsvb, readldflt, exitkey
 			);
 			osretcode = 4;
         	return osretcode; // !!! Attention !!! Early return to OS
@@ -319,9 +330,9 @@ int main(int argc, char** argv)
         	if (optopt == 'v' || optopt == 'f') {         // optopt: Parameter in error, here -v without following number
           		fprintf(stderr, "Option -%c requires an argument. Try -h !\n", optopt);
         	} else if (isprint (optopt)) {    // here we found a parameter not specified in the third getopt argument (string, see above)
-          		fprintf(stderr, "Unknown option `-%c'. Try -h !\n", optopt);
+          		fprintf(stderr, "Unknown option '-%c'. Try -h !\n", optopt);
         	} else {                    // Any other getopt error - exit program
-          		fprintf(stderr, "Unknown option character `\\x%x', try -h ! Bye\n", optopt);
+          		fprintf(stderr, "Bad option character value x%02x, try -h !\n", optopt);
         	} // endif
 			osretcode = 8;
 			return osretcode; // !!! Attention !!! Early return to OS
@@ -338,6 +349,10 @@ int main(int argc, char** argv)
     	printf("Unprocessed commmandline parameters (%d parameters):\n", optind);
     	for (int index = optind; index < argc; index++) printf ("Non-option argument [%s]\n", argv[index]);
   	}
+
+// #############################################################################################################
+// Setup Microsoft GameInput V.0 interface
+// #############################################################################################################
 
 // Define joysticks as structure and initialize to zero both subfields (deviceCount, pointer to array of pointers to the specific devinces)
 	Joystruct joysticks = {0};
@@ -422,11 +437,15 @@ int main(int argc, char** argv)
 	printf("Starting Cycle-Loop for up to %i cycles with sleep %i msecs\n", readloops,waitmsec);
 	printf("Press exit-key '%c' to interrupt if you don't like to run it a whole day ;-)\n", exitkey);
 
+// #############################################################################################################
+// Main processing Loop
+// #############################################################################################################
+
 // Cycle loop every second (-v : every two seconds)
 	for (int readloopctr = 1 ; readloopctr <= readloops ; readloopctr++)	{
 		saitektwfound = false;
 		if (cyclemessages) {
-			printf("\n*** Cycle %i , exit='%c' ***\n", readloopctr, exitkey);
+			printf("\n*** Cycle %i of %i, exit='%c' ***\n", readloopctr, readloops, exitkey);
 		} else if ( verbolvl > 0 ) {
 			printf("\n\t#DBG1 %s@%d *** while-Cycle %i ***\n", __func__, __LINE__, readloopctr);
 		}
@@ -443,6 +462,11 @@ int main(int argc, char** argv)
 		if ( verbolvl > 0 ) {
 			printf("\t#DBG1 %s@%d GameInput dispatcher work to do: %s\n", __func__, __LINE__, dispretc ? "yes" : "no");
 		}
+
+// #############################################################################################################
+// Controller devices processing loop
+// #############################################################################################################
+
 // Now let's start the processing of the "GameInput stream" for a specific controller device,
 // a continuous data stream that consists of every action (buttons, switches, axis) on all filtered devices
 		if ( verbolvl > 0 ) {
@@ -471,7 +495,7 @@ int main(int argc, char** argv)
 
 //
 // The device is selected by inner loop variable i (so controller devices are processed sequentially)
-// The last parameter (object instance "reading") is "the input reading to be returned.
+// The last parameter (object instance "reading") is "the input reading to be returned".
 // Returns NULL on failure
 //
 // SUCCEEDED seems to be a macro of winerror.h - although winerror.h isn't included
@@ -492,32 +516,88 @@ int main(int argc, char** argv)
 				if ( verbolvl > 0 ) {
 					printf("\t#DBG1 %s@%d Now GetDeviceInfo for ctrl %i\n", __func__, __LINE__, devctr);
 				}
-				auto joydevinfo = joysticks.devices[devctr]->GetDeviceInfo();
-				memsize = joydevinfo->infoSize;
+// Get GameInputDeviceInfo contents by IGameInputDevice.GetDeviceInfo() into structure joydevinfo
+				joydevinfo = NULL;
+				joydevinfo = joysticks.devices[devctr]->GetDeviceInfo();
+// Valid address returned from GetDeviceInfo ?				
+				if (joydevinfo != NULL) {
+// Then check if size of returned data block is large enough
+					memsize = joydevinfo->infoSize;
 // Check returned structure at least as big as the first fields we want to process (should always happen)
-				if (memsize >= GmInDevInfoHdr ) {
-					if ( verbolvl > 0 ) {
-						printf("\t#DBG1 %s@%d structure length (%i vs. prefix min: %i)\n", __func__, __LINE__, memsize, GmInDevInfoHdr);
-					}
-					vid = joydevinfo->vendorId;
-					pid = joydevinfo->productId;
-					rev = joydevinfo->revisionNumber;
-					ifc = joydevinfo->interfaceNumber;
-					col = joydevinfo->collectionNumber;
+					if (memsize >= GmInpDevInfSize ) {
+						if ( verbolvl > 0 ) {
+							printf("\t#DBG1 %s@%d structure length %i vs. SizeOf: %i)\n", __func__, __LINE__, memsize, GmInpDevInfSize);
+						}
+						vid = joydevinfo->vendorId;
+						pid = joydevinfo->productId;
+						rev = joydevinfo->revisionNumber;
+						ifc = joydevinfo->interfaceNumber;
+						col = joydevinfo->collectionNumber;
+
+// #############################################################################################################
+// Not working: get device name from GameInput DeviceInfo
+// #############################################################################################################
+
+// Not implemented by Microsoft in DirectInput API V.0 ; removed by Microsoft in DirectInput API V.1 !
+// Maybe a search in these two registry locations would have solved it:
+// 1. HKCU\System\CurrentControlSet\Control\MediaResources\Joystick\DINPUT.DLL\CurrentJoystickSettings : Joystick1OEMName
+// 2. HKCU\System\CurrentControlSet\Control\MediaProperties\PrivateProperties\Joystick\OEM\VID_...&PID_...\OEMName
+// but that's beyond the scope of this "check script", so I left my debug statements (verbosity level 3 : -vvv)
+//
+// Linkage to device name:
+// joydevinfo : pointer to device data block structure GameInputDeviceInfo			
+// dispnameptr : pointer to displayName data block, address from pointer GameInputDeviceInfo.displayName
+// displayName : pointer to structure of type GameInputString with 
+//					"uint32_t sizeInBytes" : string size, "uint32_t codePointCount" : number of unicode characters
+//					and "char cont* data" : UTF-8 encoded Unicode string
+// But ! It seems, displayName is always a Nullpointer (see also https://github.com/microsoft/GDK/issues/35)
+// So only if verbosity level 3 (-vvv) is selected: print the GamInputDeviceInfo structure
+						if ( verbolvl > 2 ) {
+							int singlechar;
+// Load a pointer with the starting address of the GameInputDeviceInfo structure (pointed by joydevinfo)
+// The pointer points to "unsigned char", so we can easily print each byte
+							unsigned char *joyptr = (unsigned char *) &(joydevinfo->infoSize);
+							printf("\t#DBG3 %s@%d Dumping structure GameInputDeviceInfo\n", __func__, __LINE__);
+							printf("\t#DBG3 %s@%d joydevinfo pts to %p, joyptr to %p\n", __func__, __LINE__, (void *) joydevinfo, (void *) joyptr);
+							for (int ix = 1 ; ix < GmInpDevInfSize ; ++ix) {
+								singlechar = joyptr[0];
+								printf("\t#DBG3 %s@%d ix=%03i joyptr=%p byte: dec=%03i, hex=[%02x], char=[%c]\n", __func__, __LINE__, ix-1, joyptr, singlechar, joyptr[0], joyptr[0]);
+								joyptr++;
+							}
+// Load a pointer with the address of the displayName structure
+							const GameInputString *dispnameptr = joydevinfo->displayName;
+							printf("\t#DBG3 %s@%d Dumping substructure GameInputDeviceInfo.displayName\n", __func__, __LINE__ );
+							printf("\t#DBG3 %s@%d dispnameptr (loaded from %p) points to %p\n", __func__, __LINE__, (void *) &(joydevinfo->displayName), (void *) dispnameptr);
+							if (dispnameptr != NULL) {
+								for (int ix = 1 ; ix < 8 ; ++ix) {
+									singlechar = (char) dispnameptr->data[0];
+									printf("\t#DBG3 %s@%d ix=%i dispnmptr=%p char=[%02x]\n", __func__, __LINE__, ix, dispnameptr, singlechar);
+									dispnameptr++;
+								}
+							} else {
+								printf("\t#DBG3 %s@%d dispnameptr is zero, displayName structure not accessible\n", __func__, __LINE__);
+							}
+						}
+
+// #############################################################################################################
+// Saitek Trimwheel VID_06A&PID_0BD4 specific processing
+// #############################################################################################################
+
 // We have found the Saitek Trimwheel by VID/PID ?
-					if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
-						saitektwfound = true ;
+						if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
+							saitektwfound = true ;
+						}
+						if ( verbolvl > 0 ) {
+							printf("\t#DBG1 %s@%d InfoSize: %i, VID: %#04x, PID: %#04x, REV: %#04x, IFC: %#04x, COL: %#04x\n", __func__, __LINE__, 
+									memsize, vid, pid, rev, ifc, col);
+						}
+					} else {
+						if ( verbolvl > 0 ) {
+							printf("\t#DBG1 %s@%d GetDeviceInfo() gives structure too short in length (%i vs. SizeOf: %i)\n", __func__, __LINE__, 
+									memsize, GmInpDevInfSize);
+						}
+						printf("Cannot get information for ctrl %i)\n", devctr);
 					}
-					if ( verbolvl > 0 ) {
-						printf("\t#DBG1 %s@%d InfoSize: %i, VID: %#04x, PID: %#04x, REV: %#04x, IFC: %#04x, COL: %#04x\n", __func__, __LINE__, 
-								memsize, vid, pid, rev, ifc, col);
-					}
-				} else {
-					if ( verbolvl > 0 ) {
-						printf("\t#DBG1 %s@%d GetDeviceInfo() gives structure too short in length (%i vs. prefix min: %i)\n", __func__, __LINE__, 
-								memsize, GmInDevInfoHdr);
-					}
-					printf("Cannot get information for ctrl %i)\n", devctr);
 				}
 
 // see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputreading/methods/igameinputreading_getcontrolleraxisstate
@@ -592,8 +672,13 @@ int main(int argc, char** argv)
 						}
 					}
 				}
+				else {
+					printf("No pointer returned from GetDeviceInfo() to joydevptr \n");
+				}
 			} else {
-				printf("No game controller found by GetCurrentReading\n");
+				if ( cyclemessages) {
+					printf("GetCurrentReading without success for Game controller %d\n", devctr);
+				}
 			}
 
 // Tried to get raw data, so maybe the Trimwheel hasn't to be rotated to get its actual axis value
