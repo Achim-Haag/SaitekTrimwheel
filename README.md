@@ -13,6 +13,8 @@ This USB device has an implementation bug regarding its configuration at boot ti
 
 ## Solution
 
+### Former solution : Check for changed bus number with PowerShell (unreliable)
+
 As it happens on nearly every reboot, the wheel has to be __manually turned around some revolutions__, best in both directions, after Windows is up and running.
 This seem to re-initialize the wheel's internal logic, sometimes changing its bus number. From this point, its axis values are reported back to Windows.
 
@@ -35,6 +37,8 @@ set busnoinit=%busno%
 if %busno% EQU %busnoinit% if %busno% LEQ %busnomin% goto asktrimwheel
 ```
 But sometimes, the bus number isn't changed after the wheel-turning re-initialization, so the wheel is ok but the script continues to loop, asking the user to turn it further.
+
+### New solution : ask the Trimwheel axis by Microsoft GameInput API
 
 So I decided to check the change of the axis value directly by a program.
 
@@ -67,9 +71,78 @@ Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 	* Parameter error : RC=8
 	* Other errors : RC>8
 
-## Example code from my startup script
+## Example code from my Windows startup script
 
-    - to be done
+```
+REM Part I - Other steps before checking the trimwheel
+...
+
+REM Part II - Check the Saitek Pro Flight Trimwheel by SaitekTrimwheel.exe
+:trimwheel
+echo Checking Saitek Trimwheel...
+if not exist %~dp0\SaitekTrimwheel.exe (
+ echo Missing program: %~dp0SaitekTrimwheel.exe
+ goto endtwcheck
+)
+
+:newtwcheck
+REM First request to turn the Trimwheel
+echo [30m
+powershell.exe -Command "$text=\"Now $env:username, please turn the Sai-tec Trimwheel after the beep...\" ; $voice = New-Object -ComObject Sapi.spvoice ; $voice.rate = 0 ; $rc=$voice.speak($text)"
+echo [0m
+:newtwchknext
+echo [97m
+echo Please turn the Saitek Trimwheel some revolutions !
+echo [0m
+REM Beep
+powershell.exe -Command "[console]::beep(500,1000)" > nul
+REM SaitekTrimwheel.exe : RC=0 : Trimwheel axis <> 0 (OK), RC=1 : Trimwheel axis = 0 (wheel not turned), RC=4 : -h = help, RC=16 : other error
+%~dp0\SaitekTrimwheel.exe -s -c20
+REM Trimwheel found, axis = 0 (RC=1 : wheel not turned)
+if %errorlevel% == 1 (
+  echo [97m
+  echo Saitek Trimwheel existing but not turned
+  echo [0m
+  echo [30m
+  powershell.exe -Command "$text=\"Come on, $env:username, turn the Sai-tec Trimwheel a little bit...\" ; $voice = New-Object -ComObject Sapi.spvoice ; $voice.rate = 0 ; $rc=$voice.speak($text)"
+  echo [0m
+  goto newtwchknext 
+)
+REM Trimwheel found, axis <> 0 (RC=0 : OK)
+if %errorlevel% == 0 (
+  echo [97m
+  echo Saitek Trimwheel ready for use
+  echo [0m
+  echo [30m
+  powershell.exe -Command "$text=\"Thank you, $env:username, the Sai-tec Trimwheel seems to be ready for use...\" ; $voice = New-Object -ComObject Sapi.spvoice ; $voice.rate = 0 ; $rc=$voice.speak($text)"
+  echo [0m
+  goto final
+)
+REM Other error (other RC's > 1)
+REM e.g. Trimwheel not plugged in
+echo [97m
+echo Returncode %errorlevel% from SaitekTrimwheel.exe
+echo [0m
+echo [30m
+powershell.exe -Command "$text=\"The Sai-tec Trimwheel check returned error %errorlevel%, really check once more ?\" ; $voice = New-Object -ComObject Sapi.spvoice ; $voice.rate = 0 ; $rc=$voice.speak($text)"
+echo [0m
+
+REM Ask user: repeat the check ?
+echo [93m
+CHOICE /T 5 /C NYX /D N /M "Check once more ? "
+echo [0m
+REM N: errorlevel 1 = Back to Weiter zu endtwcheck (next work to do)
+REM Y: errorlevel 2 = Back to trimwheel check (check once more))
+REM X: errorlevel 3 = End of script
+REM Attention ! "If Errorlevel x" -> Errorlevel greater equal to x ! So check in descending order !
+If Errorlevel 3 goto final
+If Errorlevel 2 goto trimwheel
+If Errorlevel 1 goto endtwcheck
+:endtwcheck
+
+REM Part III - remaining steps not related to Saitek Trimwheel
+...
+:final
 
 ## Notes
 
@@ -103,13 +176,20 @@ As I started to dive a little bit deeper into CMake, two modules are generated a
 	* GameInput.exe	-> release version, should run in Windows 10 (22H2 here), runs in my non-development gaming rig
 	* GameInput_debug.exe -> debug version, runs only in a Visual Studio (2022 here) environment as it needs the Visual Studio Debug Libraries !
 
+### Microsoft GameInput API shortcommings
+
+I would have printed the displayName of the controller, but:
+	* Microsoft GameInput API V.0 documentation shows functions with a note "not implemented yet"
+	* Microsoft GameInput API V.1 documentation states "Removed deprecated APIs, fields, and constants." (and I wasn't able to migrate to V.1,see above)
+So I couldn't get access to the displayName structure as the pointer delivered was zero.
+
 ## Experience
 
 The programming of this tool gave me insights into
 
 	* Microsoft Visual C++
 	* CMake
-	* Microsoft GameInput API
+	* Microsoft GameInput API (and its deficiencies)
 
-_04.06.25,19:01/AH_
+_19.06.25,13:15/AH_
 

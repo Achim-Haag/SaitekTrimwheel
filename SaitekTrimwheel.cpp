@@ -42,9 +42,8 @@
 	27.05.25/AH after commenting and modifying the source to understand its function
 		and to get deeper in Microsoft Windows GameInput API, now changing for my needs.
 	04.06.25/AH several programming, first final state
-	08.06.25/AH further improvement
-		- cycle message : added number of loops
-		- 
+	08.06.25/AH further message improvements 
+	19.06.25/AH message improvements; added "spinning wheel" while silent looping
 	
 */
 
@@ -106,6 +105,7 @@ static const int GmInpDevInfSize = sizeof(GameInputDeviceInfo);
 // Has to be const as the device data block is owned by IGameInput object and must not be modified by application
 static const GameInputDeviceInfo *joydevinfo;
 
+
 // Saitek Proflight Trimwheel Vendor-ID (VID) and Product-ID (PID)
 static const int saitektwvid = 0x6a3;
 static const int saitektwpid = 0xbd4;
@@ -143,6 +143,19 @@ static const int exitkey = 'Q';
 static int keypressed = 0;
 
 // #############################################################################################################
+// Spinning wheel on console from
+// https://stackoverflow.com/questions/199336/print-spinning-cursor-in-a-terminal-running-application-using-c
+// #############################################################################################################
+void advance_cursor() {
+  static int pos=0;
+  char cursor[4]={'/','-','\\','|'};
+  printf("%c\b", cursor[pos]);
+  fflush(stdout);
+  pos = (pos+1) % 4;
+}
+
+
+// #############################################################################################################
 // Start of asynchronous subroutine
 // #############################################################################################################
 // see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/functions/gameinputdevicecallback
@@ -163,14 +176,18 @@ static int keypressed = 0;
 //
 void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* context, IGameInputDevice* singledevice, uint64_t timestamp, GameInputDeviceStatus currentStatus, GameInputDeviceStatus previousStatus) 
 { 
+// Print VID/PID of controller that has changed its status
+	const GameInputDeviceInfo *joydevchgd	 = NULL;
+	joydevchgd = singledevice->GetDeviceInfo();
+	int vidchgd = joydevchgd->vendorId;
+	int pidchgd = joydevchgd->productId;
+    printf("Callback Subroutine: device state change for VID: %#04x, PID: %#04x\n", vidchgd, pidchgd);
+//
 	if ( verbolvl > 0 ) {
 		printf("\t#DBG1 %s@%d ### callbk sub: routine starting (async)\n", __func__, __LINE__);
 	}
-	if (cyclemessages) {
-		printf("Device state change detected, will be processed\n");
-	}
-// Access our current "joysticks" array (of controllers) and set function-local (!) pointer 'joysticks' to main-routine's 'joysticks' pointer
-	Joystruct* joysticks = (Joystruct*)context;
+// Access main pgm's "joysticks" array (of controllers) by copying main-routine's 'joysticks' pointer to the function-local (!) pointer 'joyarray'
+	Joystruct* joyarray = (Joystruct*)context;
 // currentStatus :
 //		GameInputDeviceNoStatus = 0x00000000
 //		GameInputDeviceConnected = 0x00000001
@@ -181,12 +198,12 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 // meaning: the "if" executes its tree as a (new) device connects
 	if (currentStatus & GameInputDeviceConnected) {
 // Compare all actual devices with the delivered device that has changed its status
-		for (uint32_t devctrcompare = 0; devctrcompare < joysticks->deviceCount; ++devctrcompare) {
+		for (uint32_t devctrcompare = 0; devctrcompare < joyarray->deviceCount; ++devctrcompare) {
 // Check if the new contoller device is already in our list of controllers, if so, do nothing and return to caller
 			if ( verbolvl > 0 )	{
 				printf("\t#DBG1 %s@%d ### callbk sub: checking device %i\n", __func__, __LINE__, devctrcompare);
 			}
-			if (joysticks->devices[devctrcompare] == singledevice) {
+			if (joyarray->devices[devctrcompare] == singledevice) {
 				if ( verbolvl > 0 ) {
 					printf("\t#DBG1 %s@%d ### callbk sub: routine leaving, joystick unchanged %i\n", __func__, __LINE__, devctrcompare);
 				}
@@ -196,16 +213,17 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 // We have found a new device, so re-allocate our joystick list with the additional joystick definition
 
 // add 1 to number of controllers
-		++joysticks->deviceCount;
+		++joyarray->deviceCount;
 		if ( verbolvl > 0 ) {
-			printf("\t#DBG1 %s@%d ### callbk sub: Joystick %i added\n", __func__, __LINE__,joysticks->deviceCount);
+			printf("\t#DBG1 %s@%d ### callbk sub: Joystick %i added\n", __func__, __LINE__,joyarray->deviceCount);
 		}
 // now realloc (resize) our list of controllers (add/change memory for the new controller)
-		joysticks->devices = (IGameInputDevice**)realloc(joysticks->devices, joysticks->deviceCount * sizeof(IGameInputDevice*));
+		joyarray->devices = (IGameInputDevice**)realloc(joyarray->devices, joyarray->deviceCount * sizeof(IGameInputDevice*));
 // and add the given new/changed device definition to the reallocated or newly allocated element of controller array
 // Array handling as of devicecount starts at 1 but array index starts at 0:
 // controller 1 to element 0, controller 2 to element 1 aso., therefore deviceCount-1)
-		joysticks->devices[joysticks->deviceCount-1] = singledevice;
+// Get GameInputDeviceInfo contents by IGameInputDevice.GetDeviceInfo() into structure joydevinfo
+		joyarray->devices[joyarray->deviceCount-1] = singledevice;
 	} else {
 		if ( verbolvl > 0 ) {
 			printf("\t#DBG1 %s@%d ### callbk sub: no change detected (currentStatus: %i)\n", __func__, __LINE__, currentStatus);
@@ -306,7 +324,7 @@ int main(int argc, char** argv)
 			waitmsec = waitmsvb;
         	if (verbolvl < 9) {
         		verbolvl = ++verbolvl;   // variable optarg definition in getopt.h, returned from compiled getopt function
-        		printf("Verbosity increased to %i, loop sleep increased to %i msecs\n", verbolvl, waitmsec);
+        		printf("Verbosity increased to %i, loop sleep set to %i msecs\n", verbolvl, waitmsec);
         	}
         	break;    // break switch-branch
       	case 's':                     // Option -s -> suppress cycle related messages
@@ -421,7 +439,7 @@ int main(int argc, char** argv)
 	}
 	gminputptr->RegisterDeviceCallback(0, GameInputKindController, GameInputDeviceAnyStatus, GameInputBlockingEnumeration, &joysticks, deviceChangeCallback, &callbackId);
 	if ( verbolvl > 0 ) {
-		printf("\t#DBG1 %s@%d Registering async callback done, callbk routine should have run\n", __func__, __LINE__);
+		printf("\t#DBG1 %s@%d Registering async callback done, should have run the callbk routine\n", __func__, __LINE__);
 	}
 
 // Define array of one controllers buttons as up to 64 button states
@@ -448,6 +466,8 @@ int main(int argc, char** argv)
 			printf("\n*** Cycle %i of %i, exit='%c' ***\n", readloopctr, readloops, exitkey);
 		} else if ( verbolvl > 0 ) {
 			printf("\n\t#DBG1 %s@%d *** while-Cycle %i ***\n", __func__, __LINE__, readloopctr);
+		} else {				// no cycle messages and no verbosity (totally silent):
+			advance_cursor();	// show a spinning wheel (afterwards cursor on last wheel character)
 		}
 // Object instance "dispatcher" is of class IGameInputDispatcher, declaration see above
 // According to https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/IGameInputDispatcher/methods/igameinputdispatcher_dispatch
@@ -458,6 +478,9 @@ int main(int argc, char** argv)
 // and that's what we do here.
 // Return value: true if work items are pending in the dispatcher's queue, false if no work items remain
 // Returns at the time that the queue is flushed
+		if ( verbolvl > 1 ) {
+			printf("\t#DBG2 %s@%d Calling GameInput dispatcher\n", __func__, __LINE__);
+		}
 		bool dispretc = dispatcher->Dispatch(0);
 		if ( verbolvl > 0 ) {
 			printf("\t#DBG1 %s@%d GameInput dispatcher work to do: %s\n", __func__, __LINE__, dispretc ? "yes" : "no");
@@ -503,11 +526,11 @@ int main(int argc, char** argv)
 // Probably from other (nested) #include
 //
 			if (SUCCEEDED(gminputptr->GetCurrentReading(GameInputKindController, joysticks.devices[devctr], &reading)))	{
+				if ( verbolvl > 1 ) {
+					printf("\t#DBG2 %s@%d Created instance 'IGameInputReading', struc size is %zu, 'reading' ptr points to %p\n", __func__, __LINE__, sizeof(IGameInputReading), (void*)reading);
+				}
 				if ( cyclemessages) {
 					printf("--- Processing Controller %d ---\n", devctr);
-				}
-				if ( verbolvl > 1 ) {
-					printf("\t#DBG2 %s@%d Created instance 'IGameInputReading', struc size is %zu, 'reading', ptr points to %p\n", __func__, __LINE__, sizeof(IGameInputReading), (void*)reading);
 				}
 // Check device information for actual controller joysticks.devices[i], according to
 // https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputdevice/methods/igameinputdevice_getdeviceinfo
@@ -598,6 +621,8 @@ int main(int argc, char** argv)
 						}
 						printf("Cannot get information for ctrl %i)\n", devctr);
 					}
+				} else {
+					printf("No pointer returned from GetDeviceInfo() to joydevptr \n");
 				}
 
 // see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputreading/methods/igameinputreading_getcontrolleraxisstate
@@ -672,9 +697,6 @@ int main(int argc, char** argv)
 						}
 					}
 				}
-				else {
-					printf("No pointer returned from GetDeviceInfo() to joydevptr \n");
-				}
 			} else {
 				if ( cyclemessages) {
 					printf("GetCurrentReading without success for Game controller %d\n", devctr);
@@ -692,6 +714,11 @@ int main(int argc, char** argv)
 
 		} // end for devctr loop
 
+// Check if we have found Sait		
+		if (! saitektwfound) {
+			printf("Saitek Trimwheel not found (assume VID: %#04x, PID: %#04x)\n", saitektwvid, saitektwpid);
+		}
+		
 // exit for-readloopctr loop if Saitek Trimwheel found to be turned
 		if (saitektwturned) {
 			if ( verbolvl > 0 ) {
@@ -719,6 +746,9 @@ int main(int argc, char** argv)
 		}
 
 // Wait a short moment, just not to overload our system
+		if ( verbolvl > 1 ) {
+			printf("\t#DBG2 %s@%d Sleeping for %i msecs\n", __func__, __LINE__, waitmsec);
+		}
 		Sleep(waitmsec); // Wait 500 msecs
 	} // end for readloopctr loop
 // Return to OS
