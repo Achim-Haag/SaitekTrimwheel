@@ -1,19 +1,19 @@
-# SaitekTrimwheel - Saitek Pro Flight Trimwheel initialization checking
+# Saitek Pro Flight Trimwheel initialization checking
 
 ## Background
 
 The Saitek Pro Flight Trimwheel is a USB controller with a single axis and no buttons or switches,
 this axis is used in flight simulators as a [trim wheel axis](https://pilotinstitute.com/aircraft-trim-explained/).
 
-### Problem
+## Problem
 
 This USB device has a small implementation bug concerning its configuration at boot time:
 > [!IMPORTANT]
 > __If the wheel is plugged in before Windows has been started, it is shown in "*Devices and Printers*", but the axis doesn't change its value, it stays on zero until the wheel is turned some revolutions__.
 
-### Solutions
+## Solutions
 
-#### Powershell : Check for changed bus number - unreliable
+### 1 - Powershell : bus number change - unreliable
 
 As the problem occurs in my system on nearly every reboot, after Windows is running, the wheel has to be __manually turned around some revolutions__ , preferably in both directions. This re-initializes the wheel's internal logic that lead in most cases to a changed "bus number". Afterwards, its axis values are reported back to Windows.
 
@@ -38,12 +38,12 @@ set busnoinit=%busno%
 if %busno% EQU %busnoinit% if %busno% LEQ %busnomin% goto asktrimwheel
 ```
 
-### SaitekTrimwheel.exe
+### 2 - SaitekTrimwheel.exe : check axis value
 
 As the checking by bus number worked not in all cases, I decided to check the change of the axis value directly, but I didn't find a simple, working tool.
 So I started to find a simple method and ended up at Microsoft GameInput and found a working sample in C++.
 
-## Description
+# SaitekTrimwheel.cpp - Description
 
 I derived the source code by copying https://github.com/MysteriousJ/Joystick-Input-Examples/blob/main/src/gameinput.cpp
 to SaitekTrimwheel.cpp and started to rework.
@@ -54,7 +54,7 @@ To understand the logic and the GameInput API, I analyzed the contents of my cop
 according to the Microsoft API documentation. I added comments of what I have understood.
 Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 
-### Parameters
+## Parameters
 
 I extract commandline parameters by getopt.c from https://github.com/alex85k/wingetopt/tree/master
 
@@ -64,7 +64,7 @@ I extract commandline parameters by getopt.c from https://github.com/alex85k/win
 	-c <number of cycles> : cycle for ### seconds, default about 24 hrs (until exit key 'Q' pressed)
 	-a : process all controllers settings, not only Saitek Trimwheel
 
-### Return codes
+## Return codes
 
 	Return codes:
 	* Trimwheel axis is not zero : RC=0
@@ -73,7 +73,7 @@ I extract commandline parameters by getopt.c from https://github.com/alex85k/win
 	* Parameter error : RC=8
 	* Other errors : RC>8
 
-### Calling example from my Windows .bat script
+## Calling example from my Windows .bat script
 
 Hint for german keybord users: "diamond with question mark" is the ESC character (027 or 0x1B) and used to set ANSI colors
 * Num-Lock active (light on)
@@ -203,7 +203,7 @@ The programming of this tool gave me insights into
 	* CMake
 	* Microsoft GameInput API (and its deficiencies ;-)
 
-## Credits
+# Credits
 
 getopt.c      Thanks to https://github.com/alex85k/wingetopt/tree/master
 gameinput.cpp Thanks to https://github.com/MysteriousJ/Joystick-Input-Examples/tree/main
