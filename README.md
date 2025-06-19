@@ -5,15 +5,15 @@
 The Saitek Pro Flight Trimwheel is a USB controller with a single axis and no buttons or switches,
 this axis is used in flight simulators as a [trim wheel](https://pilotinstitute.com/aircraft-trim-explained/).
 
-## Problem
+### Problem
 
 This USB device has an implementation bug regarding its configuration at boot time:
 > [IMPORTANT]
 > __If this wheel isn't plugged after Windows has started, but plugged in before, it is present but the axis doesn't change its value but stays on zero__.
 
-## Solution
+### Solutions
 
-### Former solution : Check for changed bus number with PowerShell (unreliable)
+#### Powershell : Check for changed bus number - unreliable
 
 As it happens on nearly every reboot, the wheel has to be __manually turned around some revolutions__, best in both directions, after Windows is up and running.
 This seem to re-initialize the wheel's internal logic, sometimes changing its bus number. From this point, its axis values are reported back to Windows.
@@ -38,11 +38,11 @@ if %busno% EQU %busnoinit% if %busno% LEQ %busnomin% goto asktrimwheel
 ```
 But sometimes, the bus number isn't changed after the wheel-turning re-initialization, so the wheel is ok but the script continues to loop, asking the user to turn it further.
 
-### New solution : ask the Trimwheel axis by Microsoft GameInput API
+### SaitekTrimwheel.exe : Ask the Trimwheel axis by Microsoft GameInput API
 
 So I decided to check the change of the axis value directly by a program.
 
-## Helper program against Microsoft GameInput API V.0
+## SaitekTrimwheel.exe - Description
 
 I derived this helper program from the source https://github.com/MysteriousJ/Joystick-Input-Examples/blob/main/src/gameinput.cpp
 to have a scriptable method to check the value of the Saitek Pro Flight Trimwheel axis in a startup script.
@@ -54,7 +54,7 @@ To understand the logic and the GameInput API, I analyzed the contents original 
 in my copied source, comparing it with the Microsoft API documentation and added comments of what I have understood.
 Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 
-## Parameters
+### Parameters
 
 I extract commandline parameters by getopt.c from https://github.com/alex85k/wingetopt/tree/master
 
@@ -64,7 +64,7 @@ I extract commandline parameters by getopt.c from https://github.com/alex85k/win
 	-c <number of cycles> : cycle for ### seconds, default about 24 hrs (until exit key 'Q' pressed)
 	-a : process all controllers settings, not only Saitek Trimwheel
 
-## Return codes
+### Return codes
 
 	Return codes:
 	* Trimwheel axis is not zero : RC=0
@@ -73,8 +73,16 @@ I extract commandline parameters by getopt.c from https://github.com/alex85k/win
 	* Parameter error : RC=8
 	* Other errors : RC>8
 
-## Example code from my Windows startup script
+### Example code from my Windows startup script
 
+Hint for german keybord users: the "diamond with question mark" is the ESC character (027 or 0x1B)
+* Num-Lock active (light on)
+* Windows Command Prompt
+* Hold left "Alt" key, then type 0 2 7 on the numeric keypad to the right, do not use "Alt-Gr"
+* Character "^[" should appear, copy
+* Edit this line to "echo ^[ > esc.txt" and execute this command
+* Use Notepad++ to further process esc.txt as it shows it correct as "ESC"
+ 
 ```
 REM Part I - Other steps before checking the trimwheel
 ...
@@ -187,7 +195,7 @@ I would have printed the displayName of the controller, but:
 So I couldn't get access to the displayName structure as the pointer delivered was zero.  
 But I left my debugging statements in the program, they will be executed by verbosity level 3 ( -vvv ).
 
-## Experience
+### Experience
 
 The programming of this tool gave me insights into
 
