@@ -1,0 +1,2 @@
+# 250619.1334/AH Exclude .c files from language detection as it results from getopt.c (not my work but copied from https://github.com/alex85k/wingetopt/tree/master
+*.c linguist-detectable=false

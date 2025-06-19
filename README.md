@@ -56,6 +56,8 @@ Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 
 ## Parameters
 
+I extract commandline parameters by getopt.c from https://github.com/alex85k/wingetopt/tree/master
+
 	-h : help
 	-v : verbose, debugging msgs, level increased by multiple occurences; changes loop-wait
 	-s : silent loop, don't write cycle messages
@@ -143,6 +145,7 @@ If Errorlevel 1 goto endtwcheck
 REM Part III - remaining steps not related to Saitek Trimwheel
 ...
 :final
+```
 
 ## Notes
 
@@ -181,7 +184,8 @@ As I started to dive a little bit deeper into CMake, two modules are generated a
 I would have printed the displayName of the controller, but:
 	* Microsoft GameInput API V.0 documentation shows functions with a note "not implemented yet"
 	* Microsoft GameInput API V.1 documentation states "Removed deprecated APIs, fields, and constants." (and I wasn't able to migrate to V.1,see above)
-So I couldn't get access to the displayName structure as the pointer delivered was zero.
+So I couldn't get access to the displayName structure as the pointer delivered was zero.  
+But I left my debugging statements in the program, they will be executed by verbosity level 3 ( -vvv ).
 
 ## Experience
 
@@ -190,6 +194,11 @@ The programming of this tool gave me insights into
 	* Microsoft Visual C++
 	* CMake
 	* Microsoft GameInput API (and its deficiencies)
+
+## Credits
+
+getopt.c      Thanks to https://github.com/alex85k/wingetopt/tree/master
+gameinput.cpp Thanks to https://github.com/MysteriousJ/Joystick-Input-Examples/tree/main
 
 _19.06.25,13:15/AH_
 
