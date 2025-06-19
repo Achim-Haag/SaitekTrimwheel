@@ -184,14 +184,14 @@ So I dropped the planned conversion to API V.1 and continued to use the V.0 game
 ### CMake Release vs. Debug
 
 As I started to dive a little deeper into CMake, two modules are generated and copied to the source folder by the CMake build process:
-	* GameInput.exe	-> release version, should run in Windows 10 (22H2 here), runs in my non-development gaming rig
-	* GameInput_debug.exe -> debug version, runs only in a Visual Studio (2022 here) environment as it needs the Visual Studio Debug Libraries !
+* GameInput.exe	-> release version, should run in Windows 10 (22H2 here), runs in my non-development gaming rig
+* GameInput_debug.exe -> debug version, runs only in a Visual Studio (2022 here) environment as it needs the Visual Studio Debug Libraries !
 
 ### Microsoft GameInput API shortcommings
 
 I would have printed the displayName of the controller, but:
-	* Microsoft GameInput API V.0 documentation shows a bunch of functions with a note "not implemented yet"
-	* Microsoft GameInput API V.1 documentation states "Removed deprecated APIs, fields, and constants." (and I wasn't able to migrate to V.1,see above)
+* Microsoft GameInput API V.0 documentation shows a bunch of functions with a note "not implemented yet"
+* Microsoft GameInput API V.1 documentation states "Removed deprecated APIs, fields, and constants." (and I wasn't able to migrate to V.1,see above)
 So I couldn't get access to the displayName structure as the pointer delivered was zero.  
 But I left my debugging statements in the program, they will be executed with verbosity level 3 ( -vvv ).
 
