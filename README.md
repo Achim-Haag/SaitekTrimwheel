@@ -3,24 +3,25 @@
 ## Background
 
 The Saitek Pro Flight Trimwheel is a USB controller with a single axis and no buttons or switches,
-this axis is used in flight simulators as a [trim wheel](https://pilotinstitute.com/aircraft-trim-explained/).
+this axis is used in flight simulators as a [trim wheel axis](https://pilotinstitute.com/aircraft-trim-explained/).
 
 ### Problem
 
-This USB device has an implementation bug regarding its configuration at boot time:
-> [IMPORTANT]
-> __If this wheel isn't plugged after Windows has started, but plugged in before, it is present but the axis doesn't change its value but stays on zero__.
+This USB device has a small implementation bug concerning its configuration at boot time:
+> [!IMPORTANT]
+> __If the wheel is plugged in before Windows has been started, it is shown in "*Devices and Printers*", but the axis doesn't change its value, it stays on zero until the wheel is turned some revolutions__.
 
 ### Solutions
 
 #### Powershell : Check for changed bus number - unreliable
 
-As it happens on nearly every reboot, the wheel has to be __manually turned around some revolutions__, best in both directions, after Windows is up and running.
-This seem to re-initialize the wheel's internal logic, sometimes changing its bus number. From this point, its axis values are reported back to Windows.
+As the problem occurs in my system on nearly every reboot, after Windows is running, the wheel has to be __manually turned around some revolutions__ , preferably in both directions. This re-initializes the wheel's internal logic that lead in most cases to a changed "bus number". Afterwards, its axis values are reported back to Windows.
 
-But: sometimes the wheel's axis starts to work after boot without manual turning, so it's not always necessary to turn the wheel.
+But as sometimes the wheel's axis starts to work without manual turning, it's not always necessary to turn it.
 
-The only possibility to check the correct status of the wheel and its axis was to check the axis starting with the Windows "Devices and Printers" menu,clicking through until the axis for this controller is shown, a complicated way not convenient on each Windows startup. As a workaround, I checked the increase of the device's bus number change (after re-initialization by turning) in a startup script by
+The only reliable working possibility to check the correct status of the wheel and its axis was to check it in the Windows "*Devices and Printers*" menu that lead to a bunch of clicks, complicated and inconvenient.
+
+As a first workaround, I found the most-time increase of the device's bus number after re-initalization and put it into my Windows startup script:
 ```
 set "busnomin=3"
 set "pwsp=-NoProfile -NoLogo"
@@ -36,22 +37,21 @@ set busno=%ERRORLEVEL%
 set busnoinit=%busno%
 if %busno% EQU %busnoinit% if %busno% LEQ %busnomin% goto asktrimwheel
 ```
-But sometimes, the bus number isn't changed after the wheel-turning re-initialization, so the wheel is ok but the script continues to loop, asking the user to turn it further.
 
-### SaitekTrimwheel.exe : Ask the Trimwheel axis by Microsoft GameInput API
+### SaitekTrimwheel.exe
 
-So I decided to check the change of the axis value directly by a program.
+As the checking by bus number worked not in all cases, I decided to check the change of the axis value directly, but I didn't find a simple, working tool.
+So I started to find a simple method and ended up at Microsoft GameInput and found a working sample in C++.
 
-## SaitekTrimwheel.exe - Description
+## Description
 
-I derived this helper program from the source https://github.com/MysteriousJ/Joystick-Input-Examples/blob/main/src/gameinput.cpp
-to have a scriptable method to check the value of the Saitek Pro Flight Trimwheel axis in a startup script.
+I derived the source code by copying https://github.com/MysteriousJ/Joystick-Input-Examples/blob/main/src/gameinput.cpp
+to SaitekTrimwheel.cpp and started to rework.
 
-It works by calling the Microsoft GameInput API V.0, this environment should be available at least in Windows 10 22H2
-without further steps.
+The program calls the Microsoft GameInput API V.0, this environment is available at least in my Windows 10 22H2.
 
-To understand the logic and the GameInput API, I analyzed the contents original gameinput.cpp program and commented every step
-in my copied source, comparing it with the Microsoft API documentation and added comments of what I have understood.
+To understand the logic and the GameInput API, I analyzed the contents of my copy and commented every step
+according to the Microsoft API documentation. I added comments of what I have understood.
 Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 
 ### Parameters
@@ -59,7 +59,7 @@ Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 I extract commandline parameters by getopt.c from https://github.com/alex85k/wingetopt/tree/master
 
 	-h : help
-	-v : verbose, debugging msgs, level increased by multiple occurences; changes loop-wait
+	-v : verbose, debugging msgs, level increased by multiple occurences; changes loop-wait too
 	-s : silent loop, don't write cycle messages
 	-c <number of cycles> : cycle for ### seconds, default about 24 hrs (until exit key 'Q' pressed)
 	-a : process all controllers settings, not only Saitek Trimwheel
@@ -73,9 +73,9 @@ I extract commandline parameters by getopt.c from https://github.com/alex85k/win
 	* Parameter error : RC=8
 	* Other errors : RC>8
 
-### Example code from my Windows startup script
+### Calling example from my Windows .bat script
 
-Hint for german keybord users: the "diamond with question mark" is the ESC character (027 or 0x1B)
+Hint for german keybord users: "diamond with question mark" is the ESC character (027 or 0x1B) and used to set ANSI colors
 * Num-Lock active (light on)
 * Windows Command Prompt
 * Hold left "Alt" key, then type 0 2 7 on the numeric keypad to the right, do not use "Alt-Gr"
@@ -179,21 +179,21 @@ for me, unexperienced in C++.
 * GetDeviceInfo switched from assignment to parameter (as a non-C++ programmer, after long time, I found out)
 * Crash when calling the GameInput's dispatcher
 
-So I dropped the conversion to API V.1 and continued to use the same V.0 gameinput.lib and its corresponding src/gameinput.h as the originating gameinput.cpp uses, found in https://github.com/MysteriousJ/Joystick-Input-Examples/tree/main
+So I dropped the planned conversion to API V.1 and continued to use the V.0 gameinput.lib/gameinput.h found in https://github.com/MysteriousJ/Joystick-Input-Examples/tree/main
 
 ### CMake Release vs. Debug
 
-As I started to dive a little bit deeper into CMake, two modules are generated and copied to the source folder by the by CMake build process:
+As I started to dive a little deeper into CMake, two modules are generated and copied to the source folder by the CMake build process:
 	* GameInput.exe	-> release version, should run in Windows 10 (22H2 here), runs in my non-development gaming rig
 	* GameInput_debug.exe -> debug version, runs only in a Visual Studio (2022 here) environment as it needs the Visual Studio Debug Libraries !
 
 ### Microsoft GameInput API shortcommings
 
 I would have printed the displayName of the controller, but:
-	* Microsoft GameInput API V.0 documentation shows functions with a note "not implemented yet"
+	* Microsoft GameInput API V.0 documentation shows a bunch of functions with a note "not implemented yet"
 	* Microsoft GameInput API V.1 documentation states "Removed deprecated APIs, fields, and constants." (and I wasn't able to migrate to V.1,see above)
 So I couldn't get access to the displayName structure as the pointer delivered was zero.  
-But I left my debugging statements in the program, they will be executed by verbosity level 3 ( -vvv ).
+But I left my debugging statements in the program, they will be executed with verbosity level 3 ( -vvv ).
 
 ### Experience
 
@@ -201,7 +201,7 @@ The programming of this tool gave me insights into
 
 	* Microsoft Visual C++
 	* CMake
-	* Microsoft GameInput API (and its deficiencies)
+	* Microsoft GameInput API (and its deficiencies ;-)
 
 ## Credits
 
