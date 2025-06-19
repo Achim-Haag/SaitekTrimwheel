@@ -57,9 +57,9 @@ Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 ## Parameters
 
 	-h : help
-	-v : verbose, print additional msgs, reduces loop wait from 500 ms to 2 secs
-	-s : silent, suppress while-cycle message written on each cycle loop
-	-c <number of cycles> : cycle time in seconds
+	-v : verbose, debugging msgs, level increased by multiple occurences; changes loop-wait
+	-s : silent loop, don't write cycle messages
+	-c <number of cycles> : cycle for ### seconds, default about 24 hrs (until exit key 'Q' pressed)
 	-a : process all controllers settings, not only Saitek Trimwheel
 
 ## Return codes
