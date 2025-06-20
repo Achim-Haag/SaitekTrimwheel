@@ -44,6 +44,7 @@
 	04.06.25/AH several programming, first final state
 	08.06.25/AH further message improvements 
 	19.06.25/AH message improvements; added "spinning wheel" while silent looping
+	20.06.25/AH reworked hexadecimal printouts
 	
 */
 
@@ -181,7 +182,11 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 	joydevchgd = singledevice->GetDeviceInfo();
 	int vidchgd = joydevchgd->vendorId;
 	int pidchgd = joydevchgd->productId;
-    printf("Callback Subroutine: device state change for VID: %#04x, PID: %#04x\n", vidchgd, pidchgd);
+// Hex chars: "%#"" -> "0x" -> counts as 2 digits ! So  %#04X prints "0x" + 4 digits, e.g. 0x3456 ;
+// What not worked: As I want leading zeroes not leading spaces, I have to add a zero behing %#06 :  %#060x
+// And in big letters (A instead of a), I have to use big X instead of little x
+// But disadvantage: the prefix 0x is changed to uppercase 0X too, so I choose a clearer definition and changed it to 0x%04X : 0xABCD
+    printf("Callback Subroutine: device state change for VID: 0x%04X, PID: 0x%04X\n", vidchgd, pidchgd);
 //
 	if ( verbolvl > 0 ) {
 		printf("\t#DBG1 %s@%d ### callbk sub: routine starting (async)\n", __func__, __LINE__);
@@ -306,7 +311,7 @@ int main(int argc, char** argv)
 // printf("### Entering next getopts loop (while), cmdline_arg = %d = %c\n", cmdline_arg, cmdline_arg);
     	switch (cmdline_arg) {
 		case 'h':                     // Option -h -> Help
-        	printf("Processing Saitek ProFlight Trimwheel (VID %04X, PID %04X) axis\n"
+        	printf("Processing Saitek ProFlight Trimwheel (VID 0x%04X, PID 0x%04X) axis\n"
            		"derived from https://github.com/MysteriousJ/Joystick-Input-Examples by Achim Haag\n"
            		"Allowed commandline parameters:\n"
            		"-h : this help\n"
@@ -350,7 +355,7 @@ int main(int argc, char** argv)
         	} else if (isprint (optopt)) {    // here we found a parameter not specified in the third getopt argument (string, see above)
           		fprintf(stderr, "Unknown option '-%c'. Try -h !\n", optopt);
         	} else {                    // Any other getopt error - exit program
-          		fprintf(stderr, "Bad option character value x%02x, try -h !\n", optopt);
+          		fprintf(stderr, "Bad option character value %#040x, try -h !\n", optopt);
         	} // endif
 			osretcode = 8;
 			return osretcode; // !!! Attention !!! Early return to OS
@@ -584,7 +589,7 @@ int main(int argc, char** argv)
 							printf("\t#DBG3 %s@%d joydevinfo pts to %p, joyptr to %p\n", __func__, __LINE__, (void *) joydevinfo, (void *) joyptr);
 							for (int ix = 1 ; ix < GmInpDevInfSize ; ++ix) {
 								singlechar = joyptr[0];
-								printf("\t#DBG3 %s@%d ix=%03i joyptr=%p byte: dec=%03i, hex=[%02x], char=[%c]\n", __func__, __LINE__, ix-1, joyptr, singlechar, joyptr[0], joyptr[0]);
+								printf("\t#DBG3 %s@%d ix=%03i joyptr=%p byte: dec=%03i, hex=[%020x], char=[%c]\n", __func__, __LINE__, ix-1, joyptr, singlechar, joyptr[0], joyptr[0]);
 								joyptr++;
 							}
 // Load a pointer with the address of the displayName structure
@@ -594,7 +599,7 @@ int main(int argc, char** argv)
 							if (dispnameptr != NULL) {
 								for (int ix = 1 ; ix < 8 ; ++ix) {
 									singlechar = (char) dispnameptr->data[0];
-									printf("\t#DBG3 %s@%d ix=%i dispnmptr=%p char=[%02x]\n", __func__, __LINE__, ix, dispnameptr, singlechar);
+									printf("\t#DBG3 %s@%d ix=%i dispnmptr=%p char=[%020x]\n", __func__, __LINE__, ix, dispnameptr, singlechar);
 									dispnameptr++;
 								}
 							} else {
@@ -611,7 +616,7 @@ int main(int argc, char** argv)
 							saitektwfound = true ;
 						}
 						if ( verbolvl > 0 ) {
-							printf("\t#DBG1 %s@%d InfoSize: %i, VID: %#04x, PID: %#04x, REV: %#04x, IFC: %#04x, COL: %#04x\n", __func__, __LINE__, 
+							printf("\t#DBG1 %s@%d InfoSize: %i, VID: 0x%04X, PID: 0x%04X, REV: 0x%04X, IFC: 0x%04X, COL: 0x%04X\n", __func__, __LINE__, 
 									memsize, vid, pid, rev, ifc, col);
 						}
 					} else {
@@ -634,7 +639,7 @@ int main(int argc, char** argv)
 
 				if ( allcontrollers || ((vid = saitektwvid) && (pid == saitektwpid)) ) {
 					if (cyclemessages) {
-						printf("Controller %i (VID: %#04x, PID: %#04x):\t", devctr, vid, pid);
+						printf("Controller %i (VID: 0x%04X, PID: 0x%04X):\t", devctr, vid, pid);
 					}
 					reading->GetControllerAxisState(ARRAYSIZE(axes), axes);
 					reading->GetControllerSwitchState(ARRAYSIZE(switches), switches);
@@ -681,7 +686,7 @@ int main(int argc, char** argv)
 // Now processing the Saitek Trimwheel if found: has only axes[0]
 					if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
 						if ( verbolvl > 0 ) {
-							printf("\t#DBG1 %s@%d Saitek Trimwheel found, VID: %#04x, PID: %#04x, axis: %f\n", __func__, __LINE__, vid, pid, axes[0]);
+							printf("\t#DBG1 %s@%d Saitek Trimwheel found, VID: 0x%04X, PID: 0x%04X, axis value: %f\n", __func__, __LINE__, vid, pid, axes[0]);
 						}
 						if ( axes[0] != 0 ) {
 							osretcode = 0;		// Trimwheel axis 0 not equal 0 : wheel is initialized
@@ -716,7 +721,7 @@ int main(int argc, char** argv)
 
 // Check if we have found Sait		
 		if (! saitektwfound) {
-			printf("Saitek Trimwheel not found (assume VID: %#04x, PID: %#04x)\n", saitektwvid, saitektwpid);
+			printf("Saitek Trimwheel not found (assume VID: 0x%04X, PID: 0x%04X)\n", saitektwvid, saitektwpid);
 		}
 		
 // exit for-readloopctr loop if Saitek Trimwheel found to be turned
