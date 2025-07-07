@@ -113,6 +113,8 @@ static const int saitektwpid = 0xbd4;
 
 // Do we have Saitek Trimwheel attached ?
 static bool saitektwfound = false;
+// Was Saitek Trimwheel there in the last cycle ?
+static bool saitektwthere = false;
 // Saitek Trimwheel axis turned, so not equal to zero ?
 static bool saitektwturned = false;
 // Return state of Saitek Trimwheel to caller of main (should be set explicitly, else 99)
@@ -466,7 +468,7 @@ int main(int argc, char** argv)
 
 // Cycle loop every second (-v : every two seconds)
 	for (int readloopctr = 1 ; readloopctr <= readloops ; readloopctr++)	{
-		saitektwfound = false;
+		saitektwfound = false;		// check for Saitek Trimwheel in this cycle
 		if (cyclemessages) {
 			printf("\n*** Cycle %i of %i, exit='%c' ***\n", readloopctr, readloops, exitkey);
 		} else if ( verbolvl > 0 ) {
@@ -612,9 +614,6 @@ int main(int argc, char** argv)
 // #############################################################################################################
 
 // We have found the Saitek Trimwheel by VID/PID ?
-						if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
-							saitektwfound = true ;
-						}
 						if ( verbolvl > 0 ) {
 							printf("\t#DBG1 %s@%d InfoSize: %i, VID: 0x%04X, PID: 0x%04X, REV: 0x%04X, IFC: 0x%04X, COL: 0x%04X\n", __func__, __LINE__, 
 									memsize, vid, pid, rev, ifc, col);
@@ -624,7 +623,7 @@ int main(int argc, char** argv)
 							printf("\t#DBG1 %s@%d GetDeviceInfo() gives structure too short in length (%i vs. SizeOf: %i)\n", __func__, __LINE__, 
 									memsize, GmInpDevInfSize);
 						}
-						printf("Cannot get information for ctrl %i)\n", devctr);
+						printf("Cannot get information for Ctrl %i)\n", devctr);
 					}
 				} else {
 					printf("No pointer returned from GetDeviceInfo() to joydevptr \n");
@@ -638,6 +637,16 @@ int main(int argc, char** argv)
 // Only if allcontrollers-flag set or (in any case) Saitek Trimwheel
 
 				if ( allcontrollers || ((vid = saitektwvid) && (pid == saitektwpid)) ) {
+					if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
+						if (!saitektwfound) {
+							saitektwfound = true ;
+							if (!saitektwthere) {
+								saitektwthere = true ;
+								printf("*** Saitek Trimwheel device appeared, VID: 0x%04X, PID: 0x%04X ***\n", vid, pid);
+  								Beep(784,1000);		// short beep on primary sound device
+							}
+						}
+					}
 					if (cyclemessages) {
 						printf("Controller %i (VID: 0x%04X, PID: 0x%04X):\t", devctr, vid, pid);
 					}
@@ -719,18 +728,24 @@ int main(int argc, char** argv)
 
 		} // end for devctr loop
 
-// Check if we have found Sait		
-		if (! saitektwfound) {
-			printf("Saitek Trimwheel not found (assume VID: 0x%04X, PID: 0x%04X)\n", saitektwvid, saitektwpid);
-		}
-		
-// exit for-readloopctr loop if Saitek Trimwheel found to be turned
+// exit for-readloopctr loop if Saitek Trimwheel found to be turned (Trimwheel turned once leads always to exit)
 		if (saitektwturned) {
 			if ( verbolvl > 0 ) {
 				printf("\t#DBG1 %s@%d Leaving for-readloopctr loop for Trimwheel axis not equal to zero\n", __func__, __LINE__);
 			}
 			break; // exit for-readloopctr loop
 		}
+
+// if in this cycle no controller was a Saitek Trimwheel
+		if (!saitektwfound) {
+			if (saitektwthere) {		// Saitek Trimwheel was there in the previous cycle but in this cycle disappeared
+				printf("Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) disappeared\n", saitektwvid, saitektwpid);
+				saitektwthere = false ;
+			} else {				// Saitek Trimwheel wasn't there in the previous cycle and in this cycle too
+				printf("Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) not found\n", saitektwvid, saitektwpid);
+			}
+		}
+
 // exit for-readloopctr loop if exit key pressed
 		bool exitkeyflag = false;
 		while ( _kbhit() ) { // as long as there are keycodes in the input buffer
