@@ -45,6 +45,7 @@
 	08.06.25/AH further message improvements 
 	19.06.25/AH message improvements; added "spinning wheel" while silent looping
 	20.06.25/AH reworked hexadecimal printouts
+	10.07.25/AH Trimwheel "appeared/disappeared/not found" messages marked by three asterisks
 	
 */
 
@@ -739,10 +740,10 @@ int main(int argc, char** argv)
 // if in this cycle no controller was a Saitek Trimwheel
 		if (!saitektwfound) {
 			if (saitektwthere) {		// Saitek Trimwheel was there in the previous cycle but in this cycle disappeared
-				printf("Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) disappeared\n", saitektwvid, saitektwpid);
+				printf("*** Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) disappeared ***\n", saitektwvid, saitektwpid);
 				saitektwthere = false ;
 			} else {				// Saitek Trimwheel wasn't there in the previous cycle and in this cycle too
-				printf("Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) not found\n", saitektwvid, saitektwpid);
+				printf("*** Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) not found ***\n", saitektwvid, saitektwpid);
 			}
 		}
 
