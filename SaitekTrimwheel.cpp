@@ -46,6 +46,7 @@
 	19.06.25/AH message improvements; added "spinning wheel" while silent looping
 	20.06.25/AH reworked hexadecimal printouts
 	10.07.25/AH Trimwheel "appeared/disappeared/not found" messages marked by three asterisks
+	11.07.25/AH Trimwheel "detected" instead of "appeared" in first cycle
 	
 */
 
@@ -265,7 +266,7 @@ int main(int argc, char** argv)
 #endif
 
 // Just to get information about the compile time at compilation (#pragma message) and execution (printf)
-#pragma message ("***** " COMP_TYP " V." MYSTRING(COMP_VER) " Compile " __FILE__ " at " __DATE__ " " __TIME__ "*****\n")   
+#pragma message ("***** " COMP_TYP " V." MYSTRING(COMP_VER) " Compile " __FILE__ " at " __DATE__ " " __TIME__ " *****\n")   
 	printf("***** Running %s,\nBinary build date: %s @ %s by %s %d *****\n\n", \
 		  argv[0], __DATE__, __TIME__, COMP_TYP, COMP_VER);
 
@@ -514,7 +515,11 @@ int main(int argc, char** argv)
 				printf("\t#DBG2 %s@%d Pointer 'reading' to IGameInputReading allocated, size is %zu\n", __func__, __LINE__, sizeof(gminputptr));
   			}
 
-// ...and call moethod "GetCurrentReading" of object instance "input" to initially access the controller input stream, see
+// #############################################################################################################
+// Get device information for this specific controller
+// #############################################################################################################
+
+			// ...and call moethod "GetCurrentReading" of object instance "input" to initially access the controller input stream, see
 // https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/enums/gameinputkind
 // Filter is GameInputKindController: "Combination of Axis, Button, and Switch"
 // (another possible filter for Saitek Trimwheel would be "GameInputKindControllerAxis - Controller input from sticks")
@@ -566,7 +571,7 @@ int main(int argc, char** argv)
 						col = joydevinfo->collectionNumber;
 
 // #############################################################################################################
-// Not working: get device name from GameInput DeviceInfo
+// Not working: get device name from GameInput DeviceInfo for this specific controller
 // #############################################################################################################
 
 // Not implemented by Microsoft in DirectInput API V.0 ; removed by Microsoft in DirectInput API V.1 !
@@ -611,7 +616,7 @@ int main(int argc, char** argv)
 						}
 
 // #############################################################################################################
-// Saitek Trimwheel VID_06A&PID_0BD4 specific processing
+// Some special processing for Saitek Trimwheel VID_06A&PID_0BD4 
 // #############################################################################################################
 
 // We have found the Saitek Trimwheel by VID/PID ?
@@ -630,37 +635,56 @@ int main(int argc, char** argv)
 					printf("No pointer returned from GetDeviceInfo() to joydevptr \n");
 				}
 
-// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputreading/methods/igameinputreading_getcontrolleraxisstate
-// Capture the axes, switches and buttons of the specific oysticks.devices[i]" controller into our own arrays
 				if ( verbolvl > 0 ) {
 					printf("\t#DBG1 %s@%d Get axes, switches and buttons for ctrl %i\n", __func__, __LINE__, devctr);
 				}
+// Now some special processing for our Saitek Trimwheel				
 // Only if allcontrollers-flag set or (in any case) Saitek Trimwheel
-
 				if ( allcontrollers || ((vid = saitektwvid) && (pid == saitektwpid)) ) {
 					if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
 						if (!saitektwfound) {
-							saitektwfound = true ;
-							if (!saitektwthere) {
-								saitektwthere = true ;
-								printf("*** Saitek Trimwheel device appeared, VID: 0x%04X, PID: 0x%04X ***\n", vid, pid);
+							saitektwfound = true ;					// Mark Trimwheel found in this cycle
+							if (!saitektwthere) {					// The Trimwheel wasn't there until now
+								saitektwthere = true ;				// so we remember its presence for the following cycles (until it may be unplugged)
+// On first cycle, the Trimwheel is "detected", from second cycle onward it "appears"
+								if (readloopctr > 1) {
+									printf("*** Saitek Trimwheel device appeared, VID: 0x%04X, PID: 0x%04X ***\n", vid, pid);
+								} else {
+									printf("*** Saitek Trimwheel device detected, VID: 0x%04X, PID: 0x%04X ***\n", vid, pid);
+								}
   								Beep(784,1000);		// short beep on primary sound device
 							}
 						}
 					}
+// Only if set by flag: print a line with VID/PID and no linefeed, replenished by axes/buttons/switches values in the following statements					
 					if (cyclemessages) {
 						printf("Controller %i (VID: 0x%04X, PID: 0x%04X):\t", devctr, vid, pid);
+
+// #############################################################################################################
+// Get axes, buttons, switches positions for this specific controller
+// #############################################################################################################
 					}
+// see https://learn.microsoft.com/en-us/gaming/gdk/docs/reference/input/gameinput/interfaces/igameinputreading/methods/igameinputreading_getcontrolleraxisstate
+// Capture the axes, switches and buttons of the specific oysticks.devices[i]" controller into our own arrays
+//
+//
+// First get the state of axes, switches, buttons in our arrays.
+// We give the size of the array in parm1 and get back our array with values in parm2
 					reading->GetControllerAxisState(ARRAYSIZE(axes), axes);
 					reading->GetControllerSwitchState(ARRAYSIZE(switches), switches);
 					reading->GetControllerButtonState(ARRAYSIZE(buttons), buttons);
-// Get number of axes, switches, buttons				
+// Seccond get the real number of axes, switches, buttons
+// According to the microsoft documentation, this should be done before getting the state to define the array size, but:
+// - the Saitek Trimwheel has just one axis and no buttons or switches
+// - information for other controllers is optional, it's a "Saitek Trimwheel Checker"
+// - Windows has a limit of 8 axes and 128 buttons per device
+// - many Games are limited to 8 axes and 32...64 buttons for each device
 					nbraxes = reading->GetControllerAxisCount();
 					nbrswch = reading->GetControllerSwitchCount();
 					nbrbutt = reading->GetControllerButtonCount();
 // If not suppressed: print what we have captured from the GameInput input stream for this specific controller
 					if (cyclemessages) {
-// First the axes
+// First print the values of all axes
 						if (nbraxes > 0) {
 							printf("  Axes - ");
 							for (uint32_t axctr = 0; axctr < nbraxes; ++axctr) {
@@ -669,7 +693,7 @@ int main(int argc, char** argv)
 						} else {
 						printf (" No Axes ");
 						}
-// Second the switches
+// Second print the position of the switches
 						if (nbrswch > 0) {
 							printf("Switches - ");
 							for (uint32_t swctr = 0; swctr < nbrswch; ++swctr) {
@@ -678,7 +702,7 @@ int main(int argc, char** argv)
 						} else {
 							printf (" No Swi  ");
 						}
-// Third the buttons
+// Third print the position of the buttons
 						if (nbrbutt > 0) {
 							printf("Buttons - ");
 							for (uint32_t btctr = 0; btctr < nbrbutt; ++btctr) {
@@ -698,6 +722,7 @@ int main(int argc, char** argv)
 						if ( verbolvl > 0 ) {
 							printf("\t#DBG1 %s@%d Saitek Trimwheel found, VID: 0x%04X, PID: 0x%04X, axis value: %f\n", __func__, __LINE__, vid, pid, axes[0]);
 						}
+// We have found axis[0] (the only axis of the Trimwheel) turned (as its initial state at program start is zero and we have a non-zero state)
 						if ( axes[0] != 0 ) {
 							osretcode = 0;		// Trimwheel axis 0 not equal 0 : wheel is initialized
 							saitektwturned = true;
@@ -712,7 +737,7 @@ int main(int argc, char** argv)
 						}
 					}
 				}
-			} else {
+			} else {			// GetCurrendReading was not successful for any reason
 				if ( cyclemessages) {
 					printf("GetCurrentReading without success for Game controller %d\n", devctr);
 				}
@@ -728,8 +753,9 @@ int main(int argc, char** argv)
 */			
 
 		} // end for devctr loop
+// At this point, we have processed all controllers for this cycle
 
-// exit for-readloopctr loop if Saitek Trimwheel found to be turned (Trimwheel turned once leads always to exit)
+// exit for-readloopctr loop (cycle loop) if Saitek Trimwheel found to be turned (Trimwheel turned once leads always to exit)
 		if (saitektwturned) {
 			if ( verbolvl > 0 ) {
 				printf("\t#DBG1 %s@%d Leaving for-readloopctr loop for Trimwheel axis not equal to zero\n", __func__, __LINE__);
@@ -740,10 +766,10 @@ int main(int argc, char** argv)
 // if in this cycle no controller was a Saitek Trimwheel
 		if (!saitektwfound) {
 			if (saitektwthere) {		// Saitek Trimwheel was there in the previous cycle but in this cycle disappeared
-				printf("*** Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) disappeared ***\n", saitektwvid, saitektwpid);
+				printf("*** Saitek Trimwheel device disappeared (VID: 0x%04X, PID: 0x%04X) ***\n", saitektwvid, saitektwpid);
 				saitektwthere = false ;
 			} else {				// Saitek Trimwheel wasn't there in the previous cycle and in this cycle too
-				printf("*** Saitek Trimwheel device (VID: 0x%04X, PID: 0x%04X) not found ***\n", saitektwvid, saitektwpid);
+				printf("*** Saitek Trimwheel device not found (VID: 0x%04X, PID: 0x%04X) ***\n", saitektwvid, saitektwpid);
 			}
 		}
 
