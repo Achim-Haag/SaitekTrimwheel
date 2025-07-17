@@ -19,10 +19,11 @@
 
 	Parameters:
 	-h : help
-	-v : verbose, print additional msgs, reduces loop wait from 500 ms to 2 secs
-	-s : silent, suppress while-cycle message written on each cycle loop
-	-c <number of cycles> : cycle time in seconds
 	-a : process all controllers settings, not only Saitek Trimwheel
+	-c <number of cycles> : cycle time in seconds
+	-s : silent, suppress while-cycle message written on each cycle loop
+	-t : tone, beep if Trimwheel detected/appears/disapears or turned (axis<>0)
+	-v : verbose, print additional msgs, reduces loop wait from 500 ms to 2 secs
 
 	Return codes:
 	* Trimwheel is not zero : RC=0
@@ -119,10 +120,17 @@ static bool saitektwfound = false;
 static bool saitektwthere = false;
 // Saitek Trimwheel axis turned, so not equal to zero ?
 static bool saitektwturned = false;
-// Return state of Saitek Trimwheel to caller of main (should be set explicitly, else 99)
+
+// My return codes of this program to the caller of main
+#define osrc_axisnotzero	 0			// Trimwheel there, axis was turned and is not zero, so it's initialized and usable
+#define osrc_axisiszero		 1			// Trimwheel not there or axis not turned (so axis is zero) in any of the cycle loops
+#define osrc_helpcalled		 4			// Program called with "-h" for help
+#define osrc_err_param		 8			// Error while processing the command line parameters
+#define osrc_err_GameInp	12			// Error from Microsoft GameInput processing
+#define osrc_err_unknown	16			// Unknown error (initial value for osretcode)
 // If we find a Saitek Trimwheel, we return 0 (axis not zero) or 1 (axis is zero) to OS
 // Any other return to OS sets a returncode 4 or higher
-static int osretcode = 16; // Default if not set otherwise is return code 16 to OS
+static int osretcode = osrc_err_unknown;	// Default: if not set otherwise, return code to OS is 16
 
 // Default readloops 86.400 (one day's seconds)
 static const int readldflt = (24*60*60);
@@ -146,6 +154,12 @@ static bool allcontrollers=false;
 // Definition of exit key. temp stor for the user-pressed key
 static const int exitkey = 'Q';
 static int keypressed = 0;
+
+// Flag for tone (beeps)
+static bool twbeep = false;
+// Tone frequencies
+static const int twbeepfrqfound = 784;		// Trimwheel there, can be turned (784 Hz = G5)
+static const int twbeepwheelturned = 523;		// Trimwheel there, can be turned (512 Hz = C5)
 
 // #############################################################################################################
 // Spinning wheel on console from
@@ -199,11 +213,11 @@ void CALLBACK deviceChangeCallback(GameInputCallbackToken callbackToken, void* c
 	Joystruct* joyarray = (Joystruct*)context;
 // currentStatus :
 //		GameInputDeviceNoStatus = 0x00000000
-//		GameInputDeviceConnected = 0x00000001
+//		GameInputDeviceConnected = 0x00000001	<--- Checked in the "if"
 //		then other status = 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x100000
 //		and GameInputDeviceAnyStatus = 0x00FFFFFF
 // GameInputDeviceConnected : 0x00000001
-// so the "if" (0 = false, any other value = true), after the boolean (!) "and" executes its tree when flag "device is connected" is set
+// Bitwise check currentStatus: the "if" becomes true when its last bit (GameInputDeviceConnected) is set
 // meaning: the "if" executes its tree as a (new) device connects
 	if (currentStatus & GameInputDeviceConnected) {
 // Compare all actual devices with the delivered device that has changed its status
@@ -310,30 +324,31 @@ int main(int argc, char** argv)
 /* Now parse the given-to-main commandline parameters */
 /* Implemented: "-h" = help; "-v" = verbosity (lvl increased by multiple occurences); "-c ###" = cycle ### seconds */
 /* The colon after an option requests a value behind an option character */
-	while ((cmdline_arg = getopt (argc, argv, "hvsc:a")) != -1) 	{
+	while ((cmdline_arg = getopt (argc, argv, "hvsc:at")) != -1) 	{
 // As we don't have here a valid verbolvl, I leave this debugging statement as comment:
 // printf("### Entering next getopts loop (while), cmdline_arg = %d = %c\n", cmdline_arg, cmdline_arg);
     	switch (cmdline_arg) {
 		case 'h':                     // Option -h -> Help
         	printf("Processing Saitek ProFlight Trimwheel (VID 0x%04X, PID 0x%04X) axis\n"
-           		"derived from https://github.com/MysteriousJ/Joystick-Input-Examples by Achim Haag\n"
+           		"Sourcecode derived by Achim Haag from https://github.com/MysteriousJ/Joystick-Input-Examples\n"
            		"Allowed commandline parameters:\n"
            		"-h : this help\n"
-           		"-v : debugging msgs, level increased by multiple occurences; changes loop-wait from %ims to %ims\n"
-           		"-s : silent loop, don't write cycle messages\n"
-           		"-c <###>: cycle for ### seconds (otherwise default: %i) until exit key %c pressed\n"
 				"-a : process all controllers (axis, switches, buttons), not only trimwheel\n"
+           		"-c <###> : cycle for ### seconds (otherwise default: %i) until exit key %c pressed\n"
+           		"-s : silent loop, don't write cycle messages\n"
+				"-t : play tone when trimwheel should be turned and on exit"
+           		"-v : debugging msgs, level increased by multiple occurences; changes loop-wait from %ims to %ims\n"
            		"Retcode: 0 = axis not zero (OK); 1 = axis zero; 4 = help ; 8 = parameter error, >8  = other errors\n",
 				saitektwvid, saitektwpid, waitmsec, waitmsvb, readldflt, exitkey
 			);
-			osretcode = 4;
+			osretcode = osrc_helpcalled;
         	return osretcode; // !!! Attention !!! Early return to OS
         	break;    // break switch-branch, never reached because of return to OS
 		case 'v':	                   // Option -v -> Verbosity, each occurence increases verbosity by 1 up to max. 9)
 			waitmsec = waitmsvb;
         	if (verbolvl < 9) {
         		verbolvl = ++verbolvl;   // variable optarg definition in getopt.h, returned from compiled getopt function
-        		printf("Verbosity increased to %i, loop sleep set to %i msecs\n", verbolvl, waitmsec);
+        		printf("Verbosity increased to %i, loop sleep time set to %i msecs\n", verbolvl, waitmsec);
         	}
         	break;    // break switch-branch
       	case 's':                     // Option -s -> suppress cycle related messages
@@ -353,6 +368,10 @@ int main(int argc, char** argv)
         	printf("Processing information of all controllers\n");
         	allcontrollers=true;
         	break;    // break switch-branch
+      	case 't':                     // Option -a -> process all controllers
+        	printf("Play tones on sound device for trimwheel available/turned\n");
+        	twbeep=true;
+        	break;    // break switch-branch
       	case '?':                     // Any other commandline parameter error
         	if (optopt == 'v' || optopt == 'f') {         // optopt: Parameter in error, here -v without following number
           		fprintf(stderr, "Option -%c requires an argument. Try -h !\n", optopt);
@@ -361,12 +380,12 @@ int main(int argc, char** argv)
         	} else {                    // Any other getopt error - exit program
           		fprintf(stderr, "Bad option character value %#040x, try -h !\n", optopt);
         	} // endif
-			osretcode = 8;
+			osretcode = osrc_err_param;
 			return osretcode; // !!! Attention !!! Early return to OS
         	break;    // break switch-branch, never reached because of return to OS
       	default:                      // Parameter allowed but not handled - this should not occur
         	printf("Parameter %c not handled, contact programmer !", cmdline_arg);
-			osretcode = 8;
+			osretcode = osrc_err_param;
 			return osretcode; // !!! Attention !!! Early return to OS
         	break;    // break switch-branch, never reached because of return to OS
     	} // end switch
@@ -376,7 +395,7 @@ int main(int argc, char** argv)
     	printf("Unprocessed commmandline parameters (%d parameters):\n", optind);
     	for (int index = optind; index < argc; index++) printf ("Non-option argument [%s]\n", argv[index]);
   	}
-
+	printf("\n");	// Empty line after the parameter processing
 // #############################################################################################################
 // Setup Microsoft GameInput V.0 interface
 // #############################################################################################################
@@ -403,7 +422,7 @@ int main(int argc, char** argv)
 	retresult = GameInputCreate(&gminputptr);		// GameInput API V.0 function
 	if (! SUCCEEDED(retresult)) {
 		printf("Error from GameInputCreate: 0x%x\n",retresult);
-		osretcode = 12;
+		osretcode = osrc_err_GameInp;
 		return osretcode; // !!! Attention !!! Early return to OS
 	}
 	if ( verbolvl > 1 ) {
@@ -423,7 +442,7 @@ int main(int argc, char** argv)
 	retresult = gminputptr->CreateDispatcher(&dispatcher);
 	if (! SUCCEEDED(retresult)) {
 		printf("Error from CreateDispatcher: 0x%x\n",retresult);
-		osretcode = 12;
+		osretcode = osrc_err_GameInp;
 		return osretcode; // !!! Attention !!! Early return to OS
 	}
 
@@ -640,8 +659,8 @@ int main(int argc, char** argv)
 				}
 // Now some special processing for our Saitek Trimwheel				
 // Only if allcontrollers-flag set or (in any case) Saitek Trimwheel
-				if ( allcontrollers || ((vid = saitektwvid) && (pid == saitektwpid)) ) {
-					if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
+				if ( allcontrollers || ((vid == saitektwvid) && (pid == saitektwpid)) ) {
+					if ( (vid == saitektwvid) && (pid == saitektwpid) ) {
 						if (!saitektwfound) {
 							saitektwfound = true ;					// Mark Trimwheel found in this cycle
 							if (!saitektwthere) {					// The Trimwheel wasn't there until now
@@ -652,7 +671,9 @@ int main(int argc, char** argv)
 								} else {
 									printf("*** Saitek Trimwheel device detected, VID: 0x%04X, PID: 0x%04X ***\n", vid, pid);
 								}
-  								Beep(784,1000);		// short beep on primary sound device
+								if (twbeep) {
+  									Beep(twbeepfrqfound,500);		// trimwheel ready (first time or again) for axis check: short beep on primary sound device
+								}
 							}
 						}
 					}
@@ -718,19 +739,19 @@ int main(int argc, char** argv)
 					reading->Release();
 
 // Now processing the Saitek Trimwheel if found: has only axes[0]
-					if ( (vid = saitektwvid) && (pid == saitektwpid) ) {
+					if ( (vid == saitektwvid) && (pid == saitektwpid) ) {
 						if ( verbolvl > 0 ) {
 							printf("\t#DBG1 %s@%d Saitek Trimwheel found, VID: 0x%04X, PID: 0x%04X, axis value: %f\n", __func__, __LINE__, vid, pid, axes[0]);
 						}
 // We have found axis[0] (the only axis of the Trimwheel) turned (as its initial state at program start is zero and we have a non-zero state)
 						if ( axes[0] != 0 ) {
-							osretcode = 0;		// Trimwheel axis 0 not equal 0 : wheel is initialized
+							osretcode = osrc_axisnotzero;		// Trimwheel axis not equal 0 : wheel is initialized and turned
 							saitektwturned = true;
 							if ( verbolvl > 0 ) {
 								printf("\t#DBG1 %s@%d Saitek Trimwheel seems initialized, osretcode=%i\n", __func__, __LINE__, osretcode);
 							}
 						} else {
-							osretcode = 1;		// Trimwheel axis 0 equal 0 : uncertain about wheel initialized
+							osretcode = osrc_axisiszero;		// Trimwheel axis equal 0 : uncertain about wheel initialized
 							if ( verbolvl > 0 ) {
 								printf("\t#DBG1 %s@%d Saitek Trimwheel axis is zero, osretcode=%i\n", __func__, __LINE__, osretcode);
 							}
@@ -798,6 +819,10 @@ int main(int argc, char** argv)
 		}
 		Sleep(waitmsec); // Wait 500 msecs
 	} // end for readloopctr loop
+// Play tone if trimwheel seems turned ("not zero") and ok
+	if (twbeep && (osretcode == osrc_axisnotzero)) {
+		Beep(twbeepwheelturned,500) ;	// trimwheel seems initialized and was turned
+	}
 // Return to OS
 	printf("End program, RC=%i\n", osretcode) ;
 	return osretcode;

@@ -59,16 +59,17 @@ Afterwards, I changed my source's logic to process mainly the Saitek Trimwheel.
 I extract commandline parameters by getopt.c from https://github.com/alex85k/wingetopt/tree/master
 
 	-h : help
-	-v : verbose, debugging msgs, level increased by multiple occurences; changes loop-wait too
-	-s : silent loop, don't write cycle messages
-	-c <number of cycles> : cycle for ### seconds, default about 24 hrs (until exit key 'Q' pressed)
 	-a : process all controllers settings, not only Saitek Trimwheel
+	-c <number of cycles> : cycle for ### seconds, default about 24 hrs (until exit key 'Q' pressed)
+	-s : silent loop, don't write cycle messages
+  -t : play tone when trimwheel should be turned and on exit
+	-v : verbose, debugging msgs, level increased by multiple occurences; changes loop-wait too
 
 ## Return codes
 
 	Return codes:
 	* Trimwheel axis is not zero : RC=0
-	* Trimwheel axis is zero : RC=1
+	* Trimwheel axis is not detected or zero : RC=1
 	* Called with "-h" : RC=4
 	* Parameter error : RC=8
 	* Other errors : RC>8
