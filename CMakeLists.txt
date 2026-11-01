@@ -28,7 +28,7 @@ add_custom_target(myBuildMsgs)
 message(STATUS ">>> Prepare for Microsoft Visual C/C++")
 # set variables for Windows Microsoft Visual C/C++ environment
 # print variables - executes only in config stage !
-cmake_print_variables(CMAKE_CONFIGURATION_TYPES CMAKE_CURRENT_BINARY_DIR)
+cmake_language(PRINT_VARIABLES NAMED CMAKE_CONFIGURATION_TYPES CMAKE_CURRENT_BINARY_DIR)
 # MSVC creates .exe in subfolders "release" or "debug"
 set(MyExeExt ".exe")
 set(MyExeOutpath "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CONFIGURATION_TYPES}")
@@ -42,13 +42,15 @@ elseif(CMAKE_CONFIGURATION_TYPES STREQUAL "Debug")
 	set(MyFileSuffix "_debug")
 	set(MyPdbExt ".pdb")
 else()
-	cmake_print_variables(CMAKE_CONFIGURATION_TYPES)
+	cmake_language(PRINT_VARIABLES NAMED CMAKE_CONFIGURATION_TYPES)
 	message( FATAL_ERROR "CMAKE_CONFIGURATION_TYPES not 'release' or 'debug'")
 endif()
 # print variables - executes only in config stage !
-cmake_print_variables( MyExeOutpath )
-cmake_print_variables( MyExeExt MyPdbExt MyFileSuffix )
-cmake_print_variables( MySubmodules )
+cmake_language(PRINT_VARIABLES NAMED
+	MyExeOutpath
+	MyExeExt MyPdbExt MyFileSuffix
+	MySubmodules
+)	
 
 # Print variable at build stage before generator is running
 add_custom_command(TARGET myBuildMsgs PRE_BUILD

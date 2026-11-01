@@ -2,11 +2,16 @@
     "version": 8,
     "configurePresets": [
         {
-            "name": "Win10_MSVC-17-2022-x64-Base",
+            "name": "Win10_MSVC-18-2026-x64-Base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
             "hidden": true,
-            "displayName": "Visual Studio Community 2022 Base Conf - amd64",
-            "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
-            "generator": "Visual Studio 17 2022",
+            "displayName": "Visual Studio Community 2026 Base",
+            "description": "Using compilers for Visual Studio 18 2026 (x64 architecture)",
+            "generator": "Visual Studio 18 2026",
             "toolset": "host=x64",
             "architecture": "x64",
             "cacheVariables": {
@@ -16,39 +21,42 @@
             }
         },
         {
-            "name": "Win10_MSVC-17-2022-x64-Debug",
-            "displayName": "Visual Studio Community 2022 Debug Conf - amd64",
-            "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
-			"inherits": [ "Win10_MSVC-17-2022-x64-Base" ],
-            "binaryDir": "${sourceDir}/out/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_CONFIGURATION_TYPES": "Debug"
-            }
-        },
-        {
-            "name": "Win10_MSVC-17-2022-x64-Release",
-            "displayName": "Visual Studio Community 2022 Release Conf - amd64",
-            "description": "Using compilers for Visual Studio 17 2022 (x64 architecture)",
-			"inherits": [ "Win10_MSVC-17-2022-x64-Base" ],
+            "name": "Win10_MSVC-18-2026-x64-Release",
+            "displayName": "Visual Studio Community 2026 Release - amd64",
+            "description": "Using compilers for Visual Studio 18 2026 (x64 architecture)",
+            "inherits": [
+                "Win10_MSVC-18-2026-x64-Base"
+            ],
             "binaryDir": "${sourceDir}/out/build/${presetName}",
             "cacheVariables": {
                 "CMAKE_CONFIGURATION_TYPES": "Release"
+            }
+        },
+        {
+            "name": "Win10_MSVC-18-2026-x64-Debug",
+            "displayName": "Visual Studio Community 2026 Debug - amd64",
+            "description": "Using compilers for Visual Studio 18 2026 (x64 architecture)",
+            "inherits": [
+                "Win10_MSVC-18-2026-x64-Base"
+            ],
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug"
             }
         }
     ],
     "buildPresets": [
         {
-            "name": "Win10_MSVC-17-2022-x64-build-debug",
-            "displayName": "Visual Studio Community 2022 Debug Build - amd64",
-            "configurePreset": "Win10_MSVC-17-2022-x64-Debug",
-            "configuration": "Debug"
+            "name": "Win10_MSVC-18-2026-x64-build-release",
+            "displayName": "Visual Studio Community 2026 RelBuild - amd64",
+            "configurePreset": "Win10_MSVC-18-2026-x64-Release",
+            "configuration": "Release"
         },
         {
-            "name": "Win10_MSVC-17-2022-x64-build-release",
-            "displayName": "Visual Studio Community 2022 Release Build - amd64",
-            "configurePreset": "Win10_MSVC-17-2022-x64-Release",
-            "configuration": "Release"
+            "name": "Win10_MSVC-18-2026-x64-build-debug",
+            "displayName": "Visual Studio Community 2026 DebugBuild - amd64",
+            "configurePreset": "Win10_MSVC-18-2026-x64-Debug",
+            "configuration": "Debug"
         }
-		
     ]
 }
