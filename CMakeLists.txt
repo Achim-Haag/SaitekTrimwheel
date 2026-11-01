@@ -10,14 +10,16 @@
 # - Install stage (if INSTALL target has been specified)
 # 
 message(STATUS ">>> Start preparing CMake environment")
-# minimum CMake version
-CMAKE_MINIMUM_REQUIRED(VERSION 3.31)
+# minimum CMake version 4.5 for usage of CMAKE_LANGUAGE(PRINT VARIABLES NAMED <varname1> ...)
+CMAKE_MINIMUM_REQUIRED(VERSION 4.5)
 
 # set the project name, version and language C/C++
 PROJECT(SaitekTrimwheel VERSION 1.0 LANGUAGES C CXX)
 
 # Enable function cmake_print_variables (but printed only on save to CMakeLists.txt !)
-include(CMakePrintHelpers)
+# Obsolete in CMAKE 4.5: cmake_print_variables and CMakePrintHelpers replaced by cmake_language(print variables name <var1> ...)
+#include(CMakePrintHelpers)
+
 # allow CMake's own testing environment
 include(CTest)
 enable_testing()
